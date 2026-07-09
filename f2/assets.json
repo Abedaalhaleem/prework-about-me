@@ -1,0 +1,31 @@
+{
+  "note": "Higgsfield job IDs per site slot. Fired 2026-07-09. products=nano_banana_pro(3:4,1k), accessories=nano_banana_pro(1:1), lookbook=soul_2(3:4,2k). spin=kling3_0 turntable seeded from W01.CB.",
+  "products": {
+    "W01": { "name": "Scrunch Legging", "CB": "866ea7fd-b8d2-4386-968c-c52e13c39ead", "SM": "23640fab-e499-4fdf-999b-4b7490600da1", "MC": "dc1eb249-f75f-4044-8c0e-70e62e1779fd", "CB_spare": "cf783209-de43-4b1c-b806-f7b0b6639b9a" },
+    "W02": { "name": "Scrunch Sports Bra", "CB": "16d4e628-c3b3-4e6d-87bf-4fdf648f5c54", "SM": "632815c5-dbbc-4a56-96d1-44afd04d6599", "MC": "20aee04d-675b-4b9c-8e17-fd73ed3cedad" },
+    "W03": { "name": "Biker Short", "CB": "9a647f4e-2201-4042-99ce-38688fea4aee", "SM": "89f818d0-88de-4239-9bf9-138dcea9865c", "MC": "f2c9a1fb-72f6-4e8c-8b8c-58810a37b0e4" },
+    "W04": { "name": "Seamless Set", "CB": "2a42fb52-bbcb-42e2-9f0c-7eb7b6b5c42d", "SM": "ac0573f2-e41b-4bbb-8dd5-8764343b6271", "MC": "22af48df-4268-4f66-9d59-15102fc3a996" },
+    "W05": { "name": "Cropped Hoodie", "CB": "950e29c6-1893-4732-9651-5ce716b0127d", "SM": "1a0fcfdb-b239-480a-abfc-287457b8dc28", "MC": "38619789-be97-4a05-b0a0-9ff02d2e29fd" },
+    "W06": { "name": "Longline Bra + Flare", "CB": "81a017f5-93c0-4491-b1e3-ddfc1f191644", "SM": "731e3f4f-af60-4518-b3a1-a2ad380849e2", "MC": "bb61da25-9d9c-4517-b00e-dab3a91c9322" },
+    "M01": { "name": "2-in-1 Training Short", "CB": "96b983b7-8577-41d7-8a56-c1b0ff0ad61c", "OL": "3ac4de5c-2706-45fe-b9de-3888823afd90", "GR": "9a9cc81f-722d-47b5-834c-961e284cdfa6" },
+    "M02": { "name": "Performance Tee", "CB": "9f17ae13-21cc-484e-80f7-b432c0edaff0", "OL": "a7aac160-9105-4b0c-9e85-315d72c6f8db", "GR": "962d5ce5-0d19-407c-944f-b3c10ea8a6be" },
+    "M03": { "name": "Muscle Tank", "CB": "2e5d40ba-941a-4d05-bdd5-3e160237c258", "OL": "4bb55046-430b-4844-88a4-8fc49689da8e", "GR": "da500f67-72b0-4823-ae1e-08a33a40bef6" },
+    "M04": { "name": "Tapered Jogger", "CB": "25c8494d-f702-47fc-80bf-2c1039dee4f1", "OL": "b55f515f-67a4-44a4-b615-8c72ca41ab93", "GR": "6f787239-0162-4de6-9bda-c3613c4b66fc" },
+    "M05": { "name": "Heavyweight Hoodie", "CB": "2ca7e4cc-5484-4be8-961f-c6704856b33a", "OL": "7eb11c7a-6b4a-4d44-bf2f-e6bcd1ccd7f0", "GR": "dd01c596-b425-4ec8-a622-8dac5ab91ca2" },
+    "M06": { "name": "Compression Long-Sleeve", "CB": "da433a41-f9fb-4bd4-91ff-a33e9ab42500", "OL": "4a2d75b1-bf8f-49f7-92fe-bf49c2b4688d", "GR": "dceef9b0-eac0-4102-9302-4dcc93644179" }
+  },
+  "accessories": {
+    "A01": { "name": "Gym Duffel", "id": "37b33fa3-2930-4c69-8862-6411c6d56daa" },
+    "A02": { "name": "F² Cap", "id": "412fbd9a-6c12-46d2-a3cb-24245bbf86f8" },
+    "A03": { "name": "Crew Socks ×3", "id": "d438a376-5497-4d38-af8a-ce74bcd32fd0" },
+    "A04": { "name": "Shaker Bottle", "id": "a45b64f9-8f9f-4e02-a1eb-90bdeeef6d49" }
+  },
+  "lookbook": {
+    "L01": { "scene": "Women / Sage Mint / rooftop golden hour", "id": "eba8103c-0a4c-4022-9491-c2a30dd3e62e" },
+    "L02": { "scene": "Men / Olive / street dusk", "id": "bdd2be07-2a96-485a-bf44-18749ec1f014" },
+    "L03": { "scene": "Duo / Core Black / gym rack light", "id": "0f65cbd3-24a8-4a59-98d1-c4fbfbe6b7a0" },
+    "L04": { "scene": "Detail / Mocha / macro seams", "id": "15f3f1d8-a94f-4a38-b588-3fcf4ef3e10b" },
+    "L05": { "scene": "Studio / Black seamless / light pool", "id": "d094a05d-79a3-41f1-8ebd-c1ce98a954d2" }
+  },
+  "spin": { "model": "kling3_0", "seeded_from": "866ea7fd-b8d2-4386-968c-c52e13c39ead", "id": "95515a4e-fc54-4af1-bd41-134cf9f6c00a", "note": "5s 9:16 360-turn; extract 24 frames (desktop) / 16 (phone) for #spot" }
+}

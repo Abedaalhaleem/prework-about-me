@@ -6,7 +6,7 @@ Single-file brand site: `f2/index.html`. No dependencies, no network calls — o
 
 - [x] **1. Skeleton** — all sections + animations live on gray placeholder boxes
 - [ ] **2. Phone scroll test** ← current gate (owner tests on their phone)
-- [ ] 3. Higgsfield asset batches (40 product stills, 5 lookbook, 1 legging turntable video)
+- [x] 3. Higgsfield asset batches — fired + verified completed (46 stills; turntable video rendering). IDs in `assets.json`
 - [ ] 4. Real images in, color morphs wired to renders
 - [ ] 5. Polish pass (easing/timing) + second phone test
 - [ ] 6. Ship
