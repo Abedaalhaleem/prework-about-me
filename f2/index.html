@@ -151,7 +151,7 @@ html.fine .card{width:300px}
 .ph .strip{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;
   padding:8px 10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase}
 .ph .strip .cw{color:var(--dim)}
-.badge{position:absolute;top:10px;left:10px;font-size:9px;font-weight:800;letter-spacing:.3em;text-transform:uppercase;
+.badge{position:absolute;top:10px;left:10px;z-index:3;font-size:9px;font-weight:800;letter-spacing:.3em;text-transform:uppercase;
   color:var(--bg);background:var(--ink);padding:5px 9px 4px;text-indent:.3em}
 .card .meta{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;gap:10px}
 .card .meta h3{font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
@@ -276,6 +276,32 @@ html.fine #cglow{display:block;position:fixed;left:0;top:0;width:340px;height:34
   transform:translate3d(-50%,-50%,0);will-change:transform}
 html.fine .ph:hover{border-color:var(--faint)}
 
+
+/* ============ v2: real renders + films ============ */
+.ph .pimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .38s ease}
+.ph .pimg.on{opacity:1}
+.ph .strip{background:linear-gradient(transparent,rgba(10,9,8,.82) 40%);padding-top:20px}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.bgl .lbimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.9}
+.p5 .bgl{background:linear-gradient(170deg,#141210 0%,#1d1a15 50%,#0b0a08 100%)}
+.film .stage{display:grid;place-items:center;background:#050404}
+.filmvid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#050404}
+.film-fade{position:absolute;inset:0;background:#050404;opacity:1;pointer-events:none}
+.film-cap{position:relative;z-index:3;display:grid;justify-items:center;gap:12px;text-align:center;
+  opacity:0;transform:translate3d(0,18px,0);padding:0 18px}
+.film-cap h2{font-size:clamp(40px,9vw,96px);font-style:italic;text-transform:uppercase;letter-spacing:-.04em;
+  text-shadow:0 2px 30px rgba(0,0,0,.75)}
+.film-cap .micro{letter-spacing:.3em}
+.film-sub{font-size:11px}
+.spinmedia{position:absolute;inset:0;z-index:3;opacity:0;transition:opacity .5s ease}
+.spinmedia.ready{opacity:1}
+#spinVid{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.spinstill{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;visibility:hidden}
+.spinstill.on{visibility:visible}
+.spinstill.sweep{animation:sweepin .55s cubic-bezier(.3,.6,.2,1) both}
+@media (prefers-reduced-motion:reduce){ .filmvid{display:none} .film-fade{opacity:0!important}
+  .film .stage{background:#0a0908 center/cover no-repeat} .film-cap{opacity:1!important;transform:none!important} }
+
 /* ============ reduced motion ============ */
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -384,6 +410,15 @@ document.documentElement.classList.add(
   </div>
 </section>
 
+
+<section class="film pin" id="f1" style="height:240vh" aria-label="Women">
+  <div class="stage">
+    <video class="filmvid" muted playsinline webkit-playsinline preload="none" loop poster="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052751_23640fab-e499-4fdf-999b-4b7490600da1_min.webp" data-src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_060556_a7ede803-ddba-4029-a7cf-37544fe2007b.mp4"></video>
+    <div class="film-fade"></div>
+    <div class="film-cap"><span class="micro">01</span><h2>Women</h2><span class="micro film-sub">Six pieces · three colorways</span></div>
+  </div>
+</section>
+
 <!-- 4 · women's shelf -->
 <section id="women" class="shelf pin" aria-label="Women's collection">
   <div class="stage">
@@ -396,10 +431,10 @@ document.documentElement.classList.add(
       <div class="track" data-shelf="w">
         <article class="card rv" style="--i:0" data-code="W01">
           <div class="ph"><span class="badge">Hero</span><span class="code">W01</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
-            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Scrunch Legging — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052748_866ea7fd-b8d2-4386-968c-c52e13c39ead_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Sage Mint" alt="Scrunch Legging — Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052751_23640fab-e499-4fdf-999b-4b7490600da1_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Mocha" alt="Scrunch Legging — Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052753_dc1eb249-f75f-4044-8c0e-70e62e1779fd_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · W01</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Scrunch Legging</h3><span class="price">$78</span></div>
           <div class="swatches" role="group" aria-label="Scrunch Legging colorways">
             <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -409,10 +444,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:1" data-code="W02">
           <div class="ph"><span class="code">W02</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
-            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Scrunch Sports Bra — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052755_16d4e628-c3b3-4e6d-87bf-4fdf648f5c54_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Sage Mint" alt="Scrunch Sports Bra — Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052758_632815c5-dbbc-4a56-96d1-44afd04d6599_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Mocha" alt="Scrunch Sports Bra — Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052759_20aee04d-675b-4b9c-8e17-fd73ed3cedad_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · W02</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Scrunch Sports Bra</h3><span class="price">$48</span></div>
           <div class="swatches" role="group" aria-label="Scrunch Sports Bra colorways">
             <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -422,10 +457,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:2" data-code="W03">
           <div class="ph"><span class="code">W03</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
-            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Biker Short — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052809_9a647f4e-2201-4042-99ce-38688fea4aee_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Sage Mint" alt="Biker Short — Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052812_89f818d0-88de-4239-9bf9-138dcea9865c_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Mocha" alt="Biker Short — Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052814_f2c9a1fb-72f6-4e8c-8b8c-58810a37b0e4_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · W03</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Biker Short</h3><span class="price">$44</span></div>
           <div class="swatches" role="group" aria-label="Biker Short colorways">
             <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -435,10 +470,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:3" data-code="W04">
           <div class="ph"><span class="code">W04</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
-            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Seamless Set — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052816_2a42fb52-bbcb-42e2-9f0c-7eb7b6b5c42d_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Sage Mint" alt="Seamless Set — Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052819_ac0573f2-e41b-4bbb-8dd5-8764343b6271_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Mocha" alt="Seamless Set — Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052820_22af48df-4268-4f66-9d59-15102fc3a996_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · W04</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Seamless Set</h3><span class="price">$92</span></div>
           <div class="swatches" role="group" aria-label="Seamless Set colorways">
             <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -448,10 +483,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:4" data-code="W05">
           <div class="ph"><span class="code">W05</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
-            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Cropped Hoodie — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052830_950e29c6-1893-4732-9651-5ce716b0127d_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Sage Mint" alt="Cropped Hoodie — Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052832_1a0fcfdb-b239-480a-abfc-287457b8dc28_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Mocha" alt="Cropped Hoodie — Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052834_38619789-be97-4a05-b0a0-9ff02d2e29fd_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · W05</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Cropped Hoodie</h3><span class="price">$88</span></div>
           <div class="swatches" role="group" aria-label="Cropped Hoodie colorways">
             <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -461,10 +496,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:5" data-code="W06">
           <div class="ph"><span class="code">W06</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
-            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Longline Bra + Flare — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052836_81a017f5-93c0-4491-b1e3-ddfc1f191644_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Sage Mint" alt="Longline Bra + Flare — Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052839_731e3f4f-af60-4518-b3a1-a2ad380849e2_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Mocha" alt="Longline Bra + Flare — Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052840_bb61da25-9d9c-4517-b00e-dab3a91c9322_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · W06</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Longline Bra + Flare</h3><span class="price">$118</span></div>
           <div class="swatches" role="group" aria-label="Longline Bra and Flare colorways">
             <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -503,6 +538,12 @@ document.documentElement.classList.add(
         <svg id="legSweep" viewBox="0 0 200 400" aria-hidden="true"></svg>
         <div class="pedestal"></div>
       </div>
+      
+      <div class="spinmedia" id="spinMedia">
+        <video id="spinVid" muted playsinline webkit-playsinline preload="none" poster="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052748_866ea7fd-b8d2-4386-968c-c52e13c39ead_min.webp" data-src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_053224_95515a4e-fc54-4af1-bd41-134cf9f6c00a.mp4" aria-label="Scrunch Legging turntable"></video>
+        <img class="spinstill" data-cw="Sage Mint" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052751_23640fab-e499-4fdf-999b-4b7490600da1_min.webp" alt="Scrunch Legging — Sage Mint" loading="lazy" decoding="async">
+        <img class="spinstill" data-cw="Mocha" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052753_dc1eb249-f75f-4044-8c0e-70e62e1779fd_min.webp" alt="Scrunch Legging — Mocha" loading="lazy" decoding="async">
+      </div>
       <div class="callout" id="co1" style="left:50%;top:15%">
         <span class="dot" style="left:-4px;top:-4px"></span>
         <span class="lab" style="left:12px;top:-46px"><b>V-yoke</b>Sculpts — lifts, never digs</span>
@@ -531,6 +572,15 @@ document.documentElement.classList.add(
   </div>
 </section>
 
+
+<section class="film pin" id="f2" style="height:220vh" aria-label="Men">
+  <div class="stage">
+    <video class="filmvid" muted playsinline webkit-playsinline preload="none" loop poster="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052958_bdd2be07-2a96-485a-bf44-18749ec1f014_min.webp" data-src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_060536_b1b0df3d-6278-4a81-b6ff-c81c7727a1e0.mp4"></video>
+    <div class="film-fade"></div>
+    <div class="film-cap"><span class="micro">02</span><h2>Men</h2><span class="micro film-sub">Sage fades. Olive rises.</span></div>
+  </div>
+</section>
+
 <!-- 6 · men's shelf — slides the other way -->
 <section id="men" class="shelf pin" aria-label="Men's collection">
   <div class="stage">
@@ -543,10 +593,10 @@ document.documentElement.classList.add(
       <div class="track" data-shelf="m">
         <article class="card rv" style="--i:0" data-code="M01">
           <div class="ph"><span class="code">M01</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
-            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="2-in-1 Training Short — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052849_96b983b7-8577-41d7-8a56-c1b0ff0ad61c_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Olive" alt="2-in-1 Training Short — Olive" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052851_3ac4de5c-2706-45fe-b9de-3888823afd90_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Graphite" alt="2-in-1 Training Short — Graphite" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052853_9a9cc81f-722d-47b5-834c-961e284cdfa6_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · M01</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>2-in-1 Training Short</h3><span class="price">$58</span></div>
           <div class="swatches" role="group" aria-label="Training Short colorways">
             <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -556,10 +606,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:1" data-code="M02">
           <div class="ph"><span class="code">M02</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
-            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Performance Tee — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052856_9f17ae13-21cc-484e-80f7-b432c0edaff0_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Olive" alt="Performance Tee — Olive" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052858_a7aac160-9105-4b0c-9e85-315d72c6f8db_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Graphite" alt="Performance Tee — Graphite" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052900_962d5ce5-0d19-407c-944f-b3c10ea8a6be_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · M02</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Performance Tee</h3><span class="price">$42</span></div>
           <div class="swatches" role="group" aria-label="Performance Tee colorways">
             <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -569,10 +619,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:2" data-code="M03">
           <div class="ph"><span class="code">M03</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
-            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Muscle Tank — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052909_2e5d40ba-941a-4d05-bdd5-3e160237c258_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Olive" alt="Muscle Tank — Olive" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052911_4bb55046-430b-4844-88a4-8fc49689da8e_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Graphite" alt="Muscle Tank — Graphite" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052913_da500f67-72b0-4823-ae1e-08a33a40bef6_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · M03</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Muscle Tank</h3><span class="price">$38</span></div>
           <div class="swatches" role="group" aria-label="Muscle Tank colorways">
             <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -582,10 +632,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:3" data-code="M04">
           <div class="ph"><span class="code">M04</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
-            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Tapered Jogger — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052915_25c8494d-f702-47fc-80bf-2c1039dee4f1_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Olive" alt="Tapered Jogger — Olive" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052917_b55f515f-67a4-44a4-b615-8c72ca41ab93_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Graphite" alt="Tapered Jogger — Graphite" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052919_6f787239-0162-4de6-9bda-c3613c4b66fc_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · M04</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Tapered Jogger</h3><span class="price">$84</span></div>
           <div class="swatches" role="group" aria-label="Tapered Jogger colorways">
             <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -595,10 +645,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:4" data-code="M05">
           <div class="ph"><span class="code">M05</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
-            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Heavyweight Hoodie — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052929_2ca7e4cc-5484-4be8-961f-c6704856b33a_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Olive" alt="Heavyweight Hoodie — Olive" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052931_7eb11c7a-6b4a-4d44-bf2f-e6bcd1ccd7f0_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Graphite" alt="Heavyweight Hoodie — Graphite" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052933_dd01c596-b425-4ec8-a622-8dac5ab91ca2_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · M05</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Heavyweight Hoodie</h3><span class="price">$98</span></div>
           <div class="swatches" role="group" aria-label="Heavyweight Hoodie colorways">
             <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -608,10 +658,10 @@ document.documentElement.classList.add(
         </article>
         <article class="card rv" style="--i:5" data-code="M06">
           <div class="ph"><span class="code">M06</span>
-            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
-            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
-            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
-            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+            <img class="pimg" data-cw="Core Black" alt="Compression Long-Sleeve — Core Black" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052935_da433a41-f9fb-4bd4-91ff-a33e9ab42500_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Olive" alt="Compression Long-Sleeve — Olive" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052937_4a2d75b1-bf8f-49f7-92fe-bf49c2b4688d_min.webp" loading="lazy" decoding="async">
+            <img class="pimg" data-cw="Graphite" alt="Compression Long-Sleeve — Graphite" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052939_dceef9b0-eac0-4102-9302-4dcc93644179_min.webp" loading="lazy" decoding="async">
+            <span class="strip"><span>F² · M06</span><span class="cw">Core Black</span></span></div>
           <div class="meta"><h3>Compression Long-Sleeve</h3><span class="price">$54</span></div>
           <div class="swatches" role="group" aria-label="Compression Long-Sleeve colorways">
             <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
@@ -624,27 +674,49 @@ document.documentElement.classList.add(
   </div>
 </section>
 
+
+<section class="film pin" id="f3" style="height:240vh" aria-label="The 2-in-1 Short">
+  <div class="stage">
+    <video class="filmvid" muted playsinline webkit-playsinline preload="none" loop poster="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052849_96b983b7-8577-41d7-8a56-c1b0ff0ad61c_min.webp" data-src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_060540_34083c86-805c-4582-8d8e-f3bfd66f2d7e.mp4"></video>
+    <div class="film-fade"></div>
+    <div class="film-cap"><span class="micro">Hero piece</span><h2>The 2-in-1 Short</h2><span class="micro film-sub">$58 — liner in, distraction out</span></div>
+  </div>
+</section>
+
+<section class="film pin" id="f4" style="height:220vh" aria-label="Lookbook">
+  <div class="stage">
+    <video class="filmvid" muted playsinline webkit-playsinline preload="none" loop poster="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_053008_0f65cbd3-24a8-4a59-98d1-c4fbfbe6b7a0_min.webp" data-src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_060541_8b9fdebe-2747-4827-a590-0a375d03d468.mp4"></video>
+    <div class="film-fade"></div>
+    <div class="film-cap"><span class="micro">03</span><h2>Lookbook</h2><span class="micro film-sub">Shot where the work happens</span></div>
+  </div>
+</section>
+
 <!-- 7 · lookbook -->
 <section id="lookbook" aria-label="Lookbook">
   <div class="lb-head">
     <span class="micro rv">03 / Lookbook</span>
     <h2 class="rv" style="--i:1;font-size:clamp(34px,6.4vw,76px);font-style:italic;text-transform:uppercase">Shot on location</h2>
   </div>
-  <div class="panel p1"><div class="bgl"></div><span class="num" aria-hidden="true">01</span>
-    <span class="frametag">Awaiting shoot — L01</span>
+  <div class="panel p1"><div class="bgl"><img class="lbimg" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052957_eba8103c-0a4c-4022-9491-c2a30dd3e62e_min.webp" alt="" loading="lazy" decoding="async"></div><span class="num" aria-hidden="true">01</span>
+    <span class="frametag">L01 · Sage Mint / rooftop</span>
     <div class="cap"><span class="micro">Women / Sage Mint</span><h3>Golden hour, concrete</h3></div>
   </div>
-  <div class="panel p2"><div class="bgl"></div><span class="num" aria-hidden="true">02</span>
-    <span class="frametag">Awaiting shoot — L02</span>
+  <div class="panel p2"><div class="bgl"><img class="lbimg" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052958_bdd2be07-2a96-485a-bf44-18749ec1f014_min.webp" alt="" loading="lazy" decoding="async"></div><span class="num" aria-hidden="true">02</span>
+    <span class="frametag">L02 · Olive / street</span>
     <div class="cap"><span class="micro">Men / Olive</span><h3>Street, after the session</h3></div>
   </div>
-  <div class="panel p3"><div class="bgl"></div><span class="num" aria-hidden="true">03</span>
-    <span class="frametag">Awaiting shoot — L03</span>
+  <div class="panel p3"><div class="bgl"><img class="lbimg" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_053008_0f65cbd3-24a8-4a59-98d1-c4fbfbe6b7a0_min.webp" alt="" loading="lazy" decoding="async"></div><span class="num" aria-hidden="true">03</span>
+    <span class="frametag">L03 · Core Black / gym</span>
     <div class="cap"><span class="micro">Duo / Core Black</span><h3>Under the rack lights</h3></div>
   </div>
-  <div class="panel p4"><div class="bgl"></div><span class="num" aria-hidden="true">04</span>
-    <span class="frametag">Awaiting shoot — L04</span>
+  <div class="panel p4"><div class="bgl"><img class="lbimg" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_053010_15f3f1d8-a94f-4a38-b588-3fcf4ef3e10b_min.webp" alt="" loading="lazy" decoding="async"></div><span class="num" aria-hidden="true">04</span>
+    <span class="frametag">L04 · Mocha / detail</span>
     <div class="cap"><span class="micro">Detail / Mocha</span><h3>Seams up close</h3></div>
+  </div>
+
+  <div class="panel p5"><div class="bgl"><img class="lbimg" src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_053011_d094a05d-79a3-41f1-8ebd-c1ce98a954d2_min.webp" alt="" loading="lazy" decoding="async"></div><span class="num" aria-hidden="true">05</span>
+    <span class="frametag">L05 · Black seamless / light pool</span>
+    <div class="cap"><span class="micro">Studio / Core Black</span><h3>One light. All work.</h3></div>
   </div>
 </section>
 
@@ -657,26 +729,35 @@ document.documentElement.classList.add(
   <div class="marquee">
     <div class="mq-track">
       <div class="mq-half">
-        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
-        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
-        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
-        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
-        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
-        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
-        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
-        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052949_37b33fa3-2930-4c69-8862-6411c6d56daa_min.webp" alt="Gym Duffel" loading="lazy" decoding="async"></span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052950_412fbd9a-6c12-46d2-a3cb-24245bbf86f8_min.webp" alt="F² Cap" loading="lazy" decoding="async"></span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052953_d438a376-5497-4d38-af8a-ce74bcd32fd0_min.webp" alt="Crew Socks ×3" loading="lazy" decoding="async"></span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052954_a45b64f9-8f9f-4e02-a1eb-90bdeeef6d49_min.webp" alt="Shaker Bottle" loading="lazy" decoding="async"></span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052949_37b33fa3-2930-4c69-8862-6411c6d56daa_min.webp" alt="Gym Duffel" loading="lazy" decoding="async"></span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052950_412fbd9a-6c12-46d2-a3cb-24245bbf86f8_min.webp" alt="F² Cap" loading="lazy" decoding="async"></span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052953_d438a376-5497-4d38-af8a-ce74bcd32fd0_min.webp" alt="Crew Socks ×3" loading="lazy" decoding="async"></span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052954_a45b64f9-8f9f-4e02-a1eb-90bdeeef6d49_min.webp" alt="Shaker Bottle" loading="lazy" decoding="async"></span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
       </div>
       <div class="mq-half" aria-hidden="true">
-        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
-        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
-        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
-        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
-        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
-        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
-        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
-        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052949_37b33fa3-2930-4c69-8862-6411c6d56daa_min.webp" alt="Gym Duffel" loading="lazy" decoding="async"></span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052950_412fbd9a-6c12-46d2-a3cb-24245bbf86f8_min.webp" alt="F² Cap" loading="lazy" decoding="async"></span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052953_d438a376-5497-4d38-af8a-ce74bcd32fd0_min.webp" alt="Crew Socks ×3" loading="lazy" decoding="async"></span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052954_a45b64f9-8f9f-4e02-a1eb-90bdeeef6d49_min.webp" alt="Shaker Bottle" loading="lazy" decoding="async"></span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052949_37b33fa3-2930-4c69-8862-6411c6d56daa_min.webp" alt="Gym Duffel" loading="lazy" decoding="async"></span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052950_412fbd9a-6c12-46d2-a3cb-24245bbf86f8_min.webp" alt="F² Cap" loading="lazy" decoding="async"></span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052953_d438a376-5497-4d38-af8a-ce74bcd32fd0_min.webp" alt="Crew Socks ×3" loading="lazy" decoding="async"></span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb"><img src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_052954_a45b64f9-8f9f-4e02-a1eb-90bdeeef6d49_min.webp" alt="Shaker Bottle" loading="lazy" decoding="async"></span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
       </div>
     </div>
+  </div>
+</section>
+
+
+<section class="film pin" id="f5" style="height:220vh" aria-label="Fitness Forever">
+  <div class="stage">
+    <video class="filmvid" muted playsinline webkit-playsinline preload="none" loop poster="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_060531_4ae6bff2-bdad-4c27-bdf0-8ed2bc7de21f_min.webp" data-src="https://d8j0ntlcm91z4.cloudfront.net/user_35MEtGotA1kONTjK1H2v6VtGuHs/hf_20260709_061109_7a720620-109c-4d3e-945a-d34b9b094ef0.mp4"></video>
+    <div class="film-fade"></div>
+    <div class="film-cap"><span class="micro">F²</span><h2>Fitness Forever</h2><span class="micro film-sub">The sign stays on</span></div>
   </div>
 </section>
 
@@ -701,7 +782,7 @@ document.documentElement.classList.add(
     <div class="rulebar"><span class="signword">Fitness&nbsp;Forever</span></div>
   </div>
   <div class="cols"><span>Instagram</span><span>TikTok</span><span>YouTube</span></div>
-  <p class="fine">© 2026 F² Apparel — skeleton build v0.1 · placeholder renders</p>
+  <p class="fine">© 2026 F² Apparel — cinema build v0.2</p>
 </footer>
 
 <div id="cglow" aria-hidden="true"></div>
@@ -852,12 +933,12 @@ try{
     const b=e.target.closest('.swatch'); if(!b) return;
     const card=b.closest('.card'), i=[...b.parentElement.children].indexOf(b);
     $$('.swatch',card).forEach((s,k)=>s.setAttribute('aria-pressed',String(k===i)));
-    const tints=$$('.tint',card);
+    const tints=$$('.tint,.pimg',card);
     tints.forEach((t,k)=>t.classList.toggle('on',k===i));
     const strip=$('.strip .cw',card); if(strip&&tints[i]) strip.textContent=tints[i].dataset.cw;
   },{passive:true});
   /* Core Black starts active */
-  $$('.card').forEach(c=>{const t=$('.tint',c); if(t) t.classList.add('on');});
+  $$('.card').forEach(c=>{const t=$('.tint,.pimg',c); if(t) t.classList.add('on');});
 }catch(e){console.warn('[f2 swatches]',e)}
 
 /* ---------- spotlight: stepped scroll-spin + callouts + color sweep ---------- */
@@ -963,6 +1044,72 @@ if(FINE&&!RM){ try{
   glowStep=()=>{ gx+=(tx-gx)*.12; gy+=(ty-gy)*.12;
     cg.style.transform='translate3d('+(gx-170)+'px,'+(gy-170)+'px,0)'; };
 }catch(e){console.warn('[f2 desktop-fx]',e)} }
+
+
+/* ---------- v2: connected film sections (scrub on desktop, play-through on phone) ---------- */
+try{
+  const films=$$('.film');
+  const lazyIO=new IntersectionObserver(es=>es.forEach(en=>{
+    if(!en.isIntersecting) return;
+    const v=$('video',en.target); if(v&&!v.src&&v.dataset.src&&!v.dataset.src.startsWith('__')){ v.src=v.dataset.src; v.load(); }
+    lazyIO.unobserve(en.target);
+  }),{rootMargin:'160% 0%'});
+  films.forEach(sec=>{
+    lazyIO.observe(sec);
+    const v=$('.filmvid',sec),fade=$('.film-fade',sec),cap=$('.film-cap',sec);
+    let dur=0,playing=false;
+    v.addEventListener('loadedmetadata',()=>{dur=(isFinite(v.duration)&&v.duration>0)?v.duration:0;lastY=-1});
+    v.addEventListener('error',()=>sec.classList.add('novid'));
+    v.addEventListener('canplay',()=>{lastY=-1},{once:true});
+    reg(sec,(p,raw)=>{
+      const edge=p<.14?1-p/.14:p>.86?(p-.86)/.14:0;
+      fade.style.opacity=String(Math.max(0,Math.min(1,edge)));
+      const c=p>.24&&p<.8;
+      cap.style.opacity=c?'1':'0'; cap.style.transform=c?'none':'translate3d(0,18px,0)';
+      cap.style.transition='opacity .45s ease, transform .45s cubic-bezier(.2,.8,.2,1)';
+      if(RM||sec.classList.contains('novid')) return;
+      if(FINE){
+        if(dur&&v.readyState>1){ const t=Math.min(dur-.06,p*dur);
+          if(Math.abs(v.currentTime-t)>.045) v.currentTime=t; }
+      }else{
+        if(raw>-.05&&raw<1.05){ if(!playing&&v.src){ playing=true; v.play().catch(()=>{playing=false}); } }
+        else if(playing){ playing=false; v.pause(); try{v.currentTime=0}catch(_){} }
+      }
+    });
+  });
+}catch(e){console.warn('[f2 films]',e)}
+
+/* ---------- v2: spotlight real spin ---------- */
+try{
+  const sm=$('#spinMedia'),sv=$('#spinVid'),spot=$('#spot');
+  const spinIO=new IntersectionObserver(es=>es.forEach(en=>{
+    if(!en.isIntersecting) return;
+    if(!sv.src&&sv.dataset.src&&!sv.dataset.src.startsWith('__')){ sv.src=sv.dataset.src; sv.load(); }
+    spinIO.unobserve(en.target);
+  }),{rootMargin:'160% 0%'});
+  spinIO.observe(spot);
+  let sdur=0,splay=false,mode='video';
+  sv.addEventListener('loadedmetadata',()=>{sdur=(isFinite(sv.duration)&&sv.duration>0)?sv.duration:0;lastY=-1});
+  sv.addEventListener('canplay',()=>{sm.classList.add('ready');const lw=$('#legWrap');if(lw)lw.style.opacity='0';lastY=-1},{once:true});
+  sv.addEventListener('error',()=>sm.classList.remove('ready'));
+  if(!RM) reg(spot,(p,raw)=>{
+    if(mode!=='video'||!sm.classList.contains('ready')) return;
+    if(FINE){ if(sdur&&sv.readyState>1){ const t=Math.min(sdur-.06,p*sdur);
+      if(Math.abs(sv.currentTime-t)>.045) sv.currentTime=t; } }
+    else{ if(raw>-.05&&raw<1.05){ if(!splay&&sv.src){splay=true; sv.loop=true; sv.play().catch(()=>{splay=false});} }
+      else if(splay){ splay=false; sv.pause(); } }
+  });
+  /* chips: black = spin video, colors = sweeping still */
+  on(doc,'click',e=>{
+    const chip=e.target.closest('.chip'); if(!chip||!chip.closest('#spot')) return;
+    const cw=chip.dataset.cw;
+    $$('.spinstill').forEach(s=>{ s.classList.remove('sweep');
+      if(s.dataset.cw===cw){ s.classList.add('on'); void s.offsetWidth; s.classList.add('sweep'); }
+      else setTimeout(()=>s.classList.remove('on'),560); });
+    if(cw==='Core Black'){ mode='video'; $$('.spinstill').forEach(s=>setTimeout(()=>s.classList.remove('on'),560)); if(!FINE&&sm.classList.contains('ready')){sv.play().catch(()=>{});} }
+    else { mode='still'; sv.pause(); }
+  },{passive:true});
+}catch(e){console.warn('[f2 spin]',e)}
 
 /* ---------- boot ---------- */
 measure();

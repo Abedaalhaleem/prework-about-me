@@ -1,15 +1,18 @@
 # F² — FITNESS FOREVER · site build
 
-Single-file brand site: `f2/index.html`. No dependencies, no network calls — opens anywhere.
+Single-file brand site: `f2/index.html`. No JS dependencies; media streams from the Higgsfield CDN.
 
 ## Status
 
-- [x] **1. Skeleton** — all sections + animations live on gray placeholder boxes
-- [ ] **2. Phone scroll test** ← current gate (owner tests on their phone)
-- [x] 3. Higgsfield asset batches — fired + verified completed (46 stills; turntable video rendering). IDs in `assets.json`
-- [ ] 4. Real images in, color morphs wired to renders
-- [ ] 5. Polish pass (easing/timing) + second phone test
-- [ ] 6. Ship
+- [x] 1. Skeleton — all sections + animations on placeholders
+- [x] 2. Higgsfield batches — 46 stills + 6 films, all verified completed (IDs in `assets.json`)
+- [x] 3. **Cinema build (v0.2)** — real renders in every card/panel/thumb; six scroll films
+      connect the categories (each starts/ends in black so sections melt together).
+      Desktop scrubs film time with scroll; phone auto-plays each film on entry (no iOS seek jank).
+      Media lazy-loads per section from the Higgsfield CDN.
+- [ ] **Phone test** ← current gate
+- [ ] 4. Polish pass (easing/timing) + second phone test
+- [ ] 5. Ship (optionally re-embed media as data URIs for a fully offline single file)
 
 ## How it's built
 
