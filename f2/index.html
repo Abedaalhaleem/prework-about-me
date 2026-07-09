@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en" class="loading">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0908">
+<meta name="description" content="F² — Fitness Forever. Performance apparel. First drop Fall 2026.">
+<title>F² — FITNESS FOREVER</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230a0908'/%3E%3Ctext x='32' y='46' font-family='Arial' font-weight='900' font-style='italic' font-size='40' fill='%23f4f1ea' text-anchor='middle'%3EF²%3C/text%3E%3C/svg%3E">
+<!--F2:STYLE-->
+<style>
+/* ============ F² SKELETON v0.1 — tokens ============ */
+:root{
+  --bg:#0a0908; --bg2:#100e0c; --panel:#16140f; --panel2:#1b1916;
+  --ink:#f4f1ea; --dim:#8f8a82; --faint:#4e4a44; --line:#262320;
+  --tung:201,168,124;            /* tungsten glow rgb */
+  --w-cb:#141414; --w-sm:#aec6b6; --w-mc:#8f7361;
+  --m-cb:#141414; --m-ol:#5d6753; --m-gr:#4b4f57;
+  --nav-h:60px;
+  --font:"Helvetica Neue",Helvetica,Arial,"Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:#0a0908;scroll-behavior:smooth}
+html.loading{overflow:hidden}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--font);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+::selection{background:rgba(var(--tung),.28);color:var(--ink)}
+h1,h2,h3{font-weight:900;letter-spacing:-.03em}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+svg{display:block}
+.mark{fill:var(--ink)}
+
+/* micro label — the sign lockup language */
+.micro{font-size:11px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;color:var(--dim)}
+.rulebar{display:flex;align-items:center;gap:14px}
+.rulebar::before,.rulebar::after{content:"";height:1px;flex:0 0 34px;background:var(--faint)}
+
+/* reveal on scroll */
+.rv{opacity:0;transform:translate3d(0,26px,0);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--i,0)*70ms)}
+.rv.in{opacity:1;transform:translate3d(0,0,0)}
+
+/* ============ loader — the sign turns on ============ */
+#loader{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;transition:opacity .5s ease .1s,visibility 0s .7s}
+#loader.done{opacity:0;visibility:hidden}
+.sign{display:grid;justify-items:center;gap:18px;animation:signon .62s steps(1,end) both}
+.sign svg{width:min(34vw,150px);height:auto}
+.sign .rulebar{color:var(--ink)}
+.sign .rulebar::before,.sign .rulebar::after{background:var(--dim)}
+.signword{font-size:12px;font-weight:800;letter-spacing:.42em;text-transform:uppercase;color:var(--ink);text-indent:.42em}
+@keyframes signon{0%{opacity:0}18%{opacity:.55}30%{opacity:.12}46%{opacity:.85}58%{opacity:.4}70%{opacity:1}}
+#loader .glowpool{position:absolute;width:70vmin;height:70vmin;border-radius:50%;
+  background:radial-gradient(circle,rgba(var(--tung),.10),transparent 62%);animation:pool .9s ease both}
+@keyframes pool{from{opacity:0}to{opacity:1}}
+
+/* ============ nav ============ */
+#nav{position:fixed;top:0;left:0;right:0;z-index:50;height:var(--nav-h);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 max(18px,env(safe-area-inset-left)) 0 max(18px,env(safe-area-inset-right));
+  padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right));
+  transition:background-color .35s ease,border-color .35s ease;border-bottom:1px solid transparent}
+#nav.solid{background:rgba(10,9,8,.92);border-bottom-color:var(--line)}
+html.fine #nav.solid{background:rgba(10,9,8,.72);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+#navLogo{height:24px;width:auto;opacity:0;transition:opacity .25s ease}
+#navLogo.on{opacity:1}
+#nav .links{display:none;gap:34px}
+html.fine #nav .links{display:flex}
+#nav .links a{font-size:11px;font-weight:700;letter-spacing:.26em;color:var(--dim);text-decoration:none;transition:color .25s}
+#nav .links a:hover,#nav .links a:focus-visible{color:var(--ink)}
+.joinbtn{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--ink);text-decoration:none;border:1px solid var(--faint);border-radius:999px;
+  padding:9px 18px;transition:border-color .25s,background-color .25s}
+.joinbtn:hover,.joinbtn:focus-visible{border-color:var(--ink);background:rgba(244,241,234,.06)}
+
+/* ============ pinned-section scaffolding ============ */
+.pin{position:relative}
+.stage{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden}
+
+/* ============ hero — the 3D sign ============ */
+#hero{height:260vh;background:var(--bg)}
+#hero .stage{display:grid;place-items:center}
+#hero .glowpool{position:absolute;left:50%;top:50%;width:96vmin;height:96vmin;transform:translate(-50%,-50%);
+  border-radius:50%;background:radial-gradient(circle,rgba(var(--tung),.09),transparent 60%)}
+#hero .stage.off{visibility:hidden}
+.logo3d-wrap{perspective:1100px;position:relative;z-index:2}
+#heroLogo{position:relative;width:min(64vw,430px);aspect-ratio:130/132;transform-style:preserve-3d;will-change:transform}
+#heroLogo .lyr{position:absolute;inset:0;width:100%;height:100%;fill:#3a352d;transform:translateZ(calc(var(--z)*2.4px))}
+#heroLogo .lyr.back{fill:url(#metal)}
+#heroLogo .lyr.face{fill:url(#metal)}
+html.fine #heroLogo .lyr.face{filter:drop-shadow(0 0 22px rgba(244,241,234,.14))}
+#heroTag{position:absolute;left:0;right:0;bottom:calc(96px + env(safe-area-inset-bottom));display:grid;justify-items:center;gap:14px;z-index:3}
+#heroTag .rulebar{color:var(--ink)}
+.scrollcue{position:absolute;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  display:grid;justify-items:center;gap:8px;z-index:3}
+.scrollcue span{font-size:9px;letter-spacing:.4em;color:var(--faint);text-transform:uppercase;text-indent:.4em}
+.scrollcue i{width:1px;height:34px;background:linear-gradient(var(--faint),transparent);display:block;overflow:hidden;position:relative}
+.scrollcue i::after{content:"";position:absolute;left:0;top:-100%;width:1px;height:100%;background:var(--ink);animation:cuedrip 1.8s ease-in-out infinite}
+@keyframes cuedrip{60%,100%{transform:translateY(210%)}}
+
+/* ============ statement ============ */
+#statement{height:210vh}
+#statement .stage{display:grid;place-content:center;justify-items:start;padding:0 6vw;background:
+  radial-gradient(60vmax 40vmax at 70% 20%,rgba(var(--tung),.05),transparent 60%),var(--bg)}
+.bigword{position:relative;font-size:clamp(58px,17.5vw,220px);line-height:.92;font-weight:900;font-style:italic;
+  letter-spacing:-.045em;text-transform:uppercase;white-space:nowrap}
+.bigword .ghost{-webkit-text-stroke:1px #3b3630;color:transparent}
+.bigword .fillmask{position:absolute;inset:0;overflow:hidden;will-change:transform}
+.bigword .filltext{position:absolute;inset:0;color:var(--ink);will-change:transform}
+#stKicker{margin-top:34px;max-width:34ch;font-size:15px;line-height:1.65;color:var(--dim);font-weight:500;
+  opacity:0;transform:translate3d(0,14px,0);transition:opacity .5s,transform .5s}
+#stKicker.on{opacity:1;transform:none}
+#stKicker b{color:var(--ink);font-weight:800}
+
+/* ============ shelves (women / men) ============ */
+.shelf{background:var(--bg)}
+.shelf .stage{display:grid;grid-template-rows:auto 1fr;padding-top:calc(var(--nav-h) + 18px)}
+.shelf-head{display:flex;align-items:baseline;justify-content:space-between;gap:18px;padding:8px 5vw 6px}
+.shelf-head h2{font-size:clamp(38px,7vw,84px);font-style:italic;text-transform:uppercase;letter-spacing:-.04em}
+.shelf-head h2 sup{font-size:.34em;font-style:normal;letter-spacing:.18em;color:var(--dim);margin-left:10px;font-weight:700}
+.shelf-head .micro{text-align:right;line-height:1.9;letter-spacing:.22em}
+.track{display:flex;align-items:center;gap:clamp(14px,2vw,26px);padding:12px 5vw 0;will-change:transform}
+/* touch: native swipe rail */
+html.touch .shelf{height:auto!important}
+html.touch .shelf .stage{position:static;height:auto;overflow:visible;display:block;padding-top:0}
+html.touch .shelf{padding:64px 0 30px}
+html.touch .shelf-head{padding:0 18px 4px;flex-direction:column;align-items:flex-start;gap:8px}
+html.touch .shelf-head .micro{text-align:left;font-size:10px;letter-spacing:.18em}
+html.touch .track{overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+  padding:14px 18px 22px;scrollbar-width:none}
+html.touch .track::-webkit-scrollbar{display:none}
+.swipehint{display:none}
+html.touch .swipehint{display:flex;align-items:center;gap:8px;padding:0 18px;color:var(--faint);
+  font-size:10px;letter-spacing:.3em;text-transform:uppercase;transition:opacity .5s}
+.swipehint::after{content:"";height:1px;width:44px;background:linear-gradient(90deg,var(--faint),transparent)}
+.swipehint.gone{opacity:0}
+
+/* product card */
+.card{flex:0 0 auto;width:min(72vw,320px);scroll-snap-align:center}
+html.fine .card{width:300px}
+.ph{position:relative;aspect-ratio:3/4;background:#1d1b17;border:1px solid #2e2a25;overflow:hidden;
+  transform:perspective(700px);transition:transform .3s ease}
+.ph .code{position:absolute;inset:0;display:grid;place-items:center;font-size:64px;font-weight:900;font-style:italic;
+  color:rgba(244,241,234,.08);letter-spacing:-.04em;user-select:none}
+.ph .tint{position:absolute;inset:0;opacity:0;transition:opacity .38s ease}
+.ph .tint.on{opacity:1}
+.ph .strip{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;
+  padding:8px 10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase}
+.ph .strip .cw{color:var(--dim)}
+.badge{position:absolute;top:10px;left:10px;font-size:9px;font-weight:800;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--bg);background:var(--ink);padding:5px 9px 4px;text-indent:.3em}
+.card .meta{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;gap:10px}
+.card .meta h3{font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.card .meta .price{font-family:var(--mono);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.swatches{display:flex;gap:4px;margin-top:8px}
+.swatch{position:relative;width:34px;height:34px;display:grid;place-items:center;border-radius:50%}
+.swatch i{width:16px;height:16px;border-radius:50%;background:var(--c);border:1px solid rgba(244,241,234,.22);transition:transform .2s}
+.swatch[aria-pressed="true"]{outline:0}
+.swatch[aria-pressed="true"] i{box-shadow:0 0 0 1.5px var(--bg),0 0 0 3px var(--ink);transform:scale(.92)}
+.swatch:focus-visible i{box-shadow:0 0 0 1.5px var(--bg),0 0 0 3px var(--dim)}
+
+/* ============ legging spotlight ============ */
+#spot{height:330vh}
+#spot .stage{background:var(--bg2)}
+#spot .glowpool{position:absolute;left:50%;top:52%;width:100vmin;height:100vmin;transform:translate(-50%,-50%);
+  border-radius:50%;background:radial-gradient(circle,var(--glowc,rgba(150,140,128,.14)),transparent 62%);
+  transition:background .6s ease}
+.spot-head{position:absolute;top:calc(var(--nav-h) + 16px);left:0;right:0;display:grid;justify-items:center;gap:10px;text-align:center;z-index:4;padding:0 16px}
+.spot-head h2{font-size:clamp(30px,6vw,64px);font-style:italic;text-transform:uppercase}
+.spot-stagebox{position:absolute;left:50%;top:53%;transform:translate(-50%,-50%);height:min(58vh,58svh);aspect-ratio:1/2;z-index:2}
+#legWrap{width:100%;height:100%;will-change:transform;position:relative}
+#legWrap svg{width:100%;height:100%;overflow:visible}
+#legVeil{position:absolute;inset:-2%;background:var(--bg2);opacity:0;pointer-events:none;transition:opacity .12s linear}
+#legSweep{position:absolute;inset:0;width:100%;height:100%;visibility:hidden}
+#legSweep.sweep{visibility:visible;animation:sweepin .55s cubic-bezier(.3,.6,.2,1) both}
+@keyframes sweepin{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 -2% 0 0)}}
+.pedestal{position:absolute;left:50%;bottom:-7%;width:120%;height:10px;transform:translateX(-50%);
+  background:radial-gradient(50% 100% at 50% 0%,rgba(0,0,0,.65),transparent 80%);border-radius:50%}
+.callout{position:absolute;z-index:5;opacity:0;transform:translate3d(0,10px,0);transition:opacity .28s ease,transform .28s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.callout.show{opacity:1;transform:none}
+.callout .dot{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 4px rgba(244,241,234,.14)}
+.callout .lab{position:absolute;white-space:nowrap;background:rgba(10,9,8,.86);border:1px solid var(--line);
+  padding:8px 11px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);line-height:1.5}
+.callout .lab b{display:block;font-size:10px;letter-spacing:.26em;color:var(--dim);font-weight:800}
+html.touch .callout .lab{white-space:normal;width:max-content;max-width:44vw;font-size:9px}
+html.touch #co1 .lab{left:auto;right:12px;top:-64px;text-align:right}
+html.touch #co3 .lab{top:-4px}
+#spotHud{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:calc(20px + env(safe-area-inset-bottom));
+  font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--dim);z-index:4}
+#spotHud b{color:var(--ink);font-weight:600}
+.chips{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));
+  display:grid;justify-items:end;gap:9px;z-index:6}
+.chips .chiprow{display:flex;gap:6px}
+.chip{width:42px;height:42px;display:grid;place-items:center;border-radius:50%}
+.chip i{width:22px;height:22px;border-radius:50%;background:var(--c);border:1px solid rgba(244,241,234,.25);transition:transform .2s}
+.chip[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--bg2),0 0 0 3.5px var(--ink);transform:scale(.9)}
+.chip:focus-visible i{box-shadow:0 0 0 2px var(--bg2),0 0 0 3.5px var(--dim)}
+#chipName{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--dim);text-transform:uppercase}
+
+/* ============ lookbook ============ */
+#lookbook{background:var(--bg)}
+.lb-head{padding:110px 5vw 26px}
+.panel{position:relative;height:100vh;height:100svh;overflow:hidden;border-top:1px solid var(--line)}
+.panel .bgl{position:absolute;inset:-14% 0;will-change:transform}
+.panel .num{position:absolute;right:-2vw;bottom:-6vh;font-size:44vh;font-weight:900;font-style:italic;
+  color:transparent;-webkit-text-stroke:1px rgba(244,241,234,.07);line-height:1;user-select:none}
+.panel .cap{position:absolute;left:5vw;bottom:9vh;display:grid;gap:10px;will-change:transform;z-index:2}
+.panel .cap h3{font-size:clamp(26px,4.6vw,54px);font-style:italic;text-transform:uppercase;letter-spacing:-.03em}
+.panel .cap .micro{letter-spacing:.26em}
+.panel .frametag{position:absolute;top:calc(var(--nav-h) + 14px);right:max(18px,env(safe-area-inset-right));
+  font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+.p1 .bgl{background:linear-gradient(155deg,#181510 0%,#221d14 42%,#0c0b09 100%)}
+.p2 .bgl{background:linear-gradient(200deg,#131408 0%,#1b1d12 45%,#0a0b07 100%)}
+.p3 .bgl{background:linear-gradient(160deg,#121212 0%,#1e1e20 50%,#0a0a0b 100%)}
+.p4 .bgl{background:linear-gradient(210deg,#191310 0%,#241a13 48%,#0b0908 100%)}
+.panel .bgl::after{content:"";position:absolute;inset:0;background:radial-gradient(52vmax 36vmax at 62% 30%,rgba(var(--tung),.08),transparent 62%)}
+
+/* ============ accessories marquee ============ */
+#accs{padding:96px 0 100px;border-top:1px solid var(--line);background:var(--bg)}
+#accs .lb-head{padding:0 5vw 30px}
+.marquee{overflow:hidden;border-block:1px solid var(--line);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}
+.mq-track{display:flex;width:max-content;animation:mq 30s linear infinite}
+html.fine .marquee:hover .mq-track{animation-play-state:paused}
+@keyframes mq{to{transform:translate3d(-50%,0,0)}}
+.mq-half{display:flex}
+.mq-item{display:flex;align-items:center;gap:16px;padding:20px 30px;border-right:1px solid var(--line);white-space:nowrap}
+.mq-item .thumb{width:56px;height:56px;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;
+  font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.1em}
+.mq-item .nm{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.mq-item .pr{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+/* ============ signup ============ */
+#join{min-height:100vh;min-height:100svh;display:grid;place-content:center;justify-items:center;gap:26px;
+  padding:110px 6vw;text-align:center;position:relative;overflow:hidden;background:
+  radial-gradient(46vmax 34vmax at 50% 8%,rgba(var(--tung),.07),transparent 60%),var(--bg)}
+#join h2{font-size:clamp(40px,9vw,110px);font-style:italic;text-transform:uppercase;letter-spacing:-.04em;line-height:.95;text-wrap:balance}
+#join .sub{max-width:36ch;color:var(--dim);font-size:14px;line-height:1.7}
+#joinForm{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;width:min(92vw,520px)}
+#joinForm input{flex:1 1 240px;background:transparent;border:0;border-bottom:1px solid var(--faint);
+  padding:14px 4px;font-size:15px;letter-spacing:.04em;color:var(--ink);border-radius:0;transition:border-color .3s}
+#joinForm input::placeholder{color:var(--faint);text-transform:uppercase;font-size:12px;letter-spacing:.22em}
+#joinForm input:focus{outline:0;border-bottom-color:var(--ink)}
+#joinForm.err input{border-bottom-color:#b4715a}
+.magwrap{display:inline-block}
+#joinBtn{border:1px solid var(--ink);border-radius:999px;padding:15px 34px;font-size:12px;font-weight:800;
+  letter-spacing:.24em;text-transform:uppercase;color:var(--bg);background:var(--ink);text-indent:.24em;
+  transition:background-color .25s,color .25s;will-change:transform}
+#joinBtn:hover{background:transparent;color:var(--ink)}
+#joinMsg{min-height:20px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+#joinMsg.bad{color:#c58a71}
+#join .done-line{display:none;font-size:clamp(20px,4vw,34px);font-weight:900;font-style:italic;text-transform:uppercase;letter-spacing:-.02em}
+#join.done #joinForm,#join.done .sub{display:none}
+#join.done .done-line{display:block}
+
+/* ============ footer ============ */
+footer{border-top:1px solid var(--line);padding:60px 5vw calc(46px + env(safe-area-inset-bottom));
+  display:grid;justify-items:center;gap:20px;background:var(--bg2);text-align:center}
+footer .sign svg{width:64px}
+footer .sign{animation:none;gap:12px}
+footer .signword{font-size:9px;color:var(--dim)}
+footer .cols{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+footer .cols span{font-size:10px;letter-spacing:.26em;color:var(--faint);text-transform:uppercase}
+footer .fine{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase}
+
+/* ============ desktop-only flourishes ============ */
+#cglow{display:none}
+html.fine #cglow{display:block;position:fixed;left:0;top:0;width:340px;height:340px;border-radius:50%;
+  pointer-events:none;z-index:40;mix-blend-mode:screen;
+  background:radial-gradient(circle,rgba(var(--tung),.05),transparent 62%);
+  transform:translate3d(-50%,-50%,0);will-change:transform}
+html.fine .ph:hover{border-color:var(--faint)}
+
+/* ============ reduced motion ============ */
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .sign,.scrollcue i::after,.mq-track{animation:none!important}
+  .marquee{overflow-x:auto}
+  .rv{opacity:1;transform:none;transition:none}
+  #legSweep.sweep{animation:none;clip-path:inset(0 -2% 0 0)}
+}
+</style>
+<!--F2:/STYLE-->
+</head>
+<body>
+<script>
+/* pointer-class before first paint: coarse => .touch, else .fine
+   desktop-only modules key off this and are never initialized on touch */
+document.documentElement.classList.add(
+  matchMedia('(pointer: coarse)').matches ? 'touch' : 'fine');
+</script>
+<!--F2:BODY-->
+
+<!-- shared defs: the F² mark (blade-cut italic F + squared 2) + metal gradient -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="f2mark">
+      <g transform="translate(24 6) skewX(-14)">
+        <polygon points="6,0 84,0 76,26 6,26"/>
+        <polygon points="6,44 74,44 66,70 6,70"/>
+        <polygon points="6,0 34,0 34,104 10,124 16,70 6,70"/>
+      </g>
+      <g transform="translate(102 0) skewX(-14) scale(.62)">
+        <rect x="0" y="0" width="38" height="11"/>
+        <rect x="27" y="11" width="11" height="10"/>
+        <rect x="0" y="21" width="38" height="11"/>
+        <rect x="0" y="32" width="11" height="10"/>
+        <rect x="0" y="42" width="38" height="11"/>
+      </g>
+    </g>
+    <linearGradient id="metal" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="130" y2="124">
+      <stop offset="0" stop-color="#c4bfb3"/>
+      <stop offset=".26" stop-color="#f9f6ee"/>
+      <stop offset=".48" stop-color="#cfc9bc"/>
+      <stop offset=".62" stop-color="#fffdf6"/>
+      <stop offset=".84" stop-color="#aaa498"/>
+      <stop offset="1" stop-color="#eee9dd"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<!-- 1 · loader -->
+<div id="loader" aria-hidden="true">
+  <div class="glowpool"></div>
+  <div class="sign">
+    <svg viewBox="0 0 130 132" class="mark"><use href="#f2mark"/></svg>
+    <div class="rulebar"><span class="signword">Fitness&nbsp;Forever</span></div>
+  </div>
+</div>
+
+<!-- nav -->
+<header id="nav">
+  <a href="#top" aria-label="F² home">
+    <svg id="navLogo" viewBox="0 0 130 132" class="mark"><use href="#f2mark"/></svg>
+  </a>
+  <nav class="links" aria-label="Sections">
+    <a href="#women">Women</a><a href="#men">Men</a><a href="#lookbook">Lookbook</a><a href="#accs">Carry</a>
+  </nav>
+  <a class="joinbtn" href="#join">Join</a>
+</header>
+
+<main id="top">
+
+<!-- 2 · hero — 3D sign floats in black, turns with scroll, docks into nav -->
+<section id="hero" class="pin" aria-label="F² — Fitness Forever">
+  <div class="stage" id="heroStage">
+    <div class="glowpool"></div>
+    <div class="logo3d-wrap">
+      <div id="heroLogo" aria-hidden="false" role="img" aria-label="F squared logo">
+        <svg class="lyr back" style="--z:-8" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-7" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-6" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-5" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-4" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-3" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-2" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr" style="--z:-1" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+        <svg class="lyr face" style="--z:0" viewBox="0 0 130 132"><use href="#f2mark"/></svg>
+      </div>
+    </div>
+    <div id="heroTag">
+      <div class="rulebar"><span class="signword">Fitness&nbsp;Forever</span></div>
+      <span class="micro" style="letter-spacing:.24em">Performance apparel — first drop fall '26</span>
+    </div>
+    <div class="scrollcue" aria-hidden="true"><i></i><span>Scroll</span></div>
+  </div>
+</section>
+
+<!-- 3 · brand statement — words fill as you scroll -->
+<section id="statement" class="pin" aria-label="Fitness Forever">
+  <div class="stage">
+    <div>
+      <div class="bigword" data-word="1"><span class="ghost" aria-hidden="true">Fitness</span>
+        <span class="fillmask"><span class="filltext">Fitness</span></span></div>
+      <div class="bigword" data-word="2"><span class="ghost" aria-hidden="true">Forever</span>
+        <span class="fillmask"><span class="filltext">Forever</span></span></div>
+      <p id="stKicker">Not a phase. Not a program. <b>A uniform for the ones who never stop.</b> Designed to be lived in — squat racks to sidewalks.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · women's shelf -->
+<section id="women" class="shelf pin" aria-label="Women's collection">
+  <div class="stage">
+    <div class="shelf-head">
+      <h2 class="rv">Women<sup>01</sup></h2>
+      <p class="micro rv" style="--i:1">Six pieces · three colorways<br>Core Black / Sage Mint / Mocha</p>
+    </div>
+    <div>
+      <p class="swipehint">Swipe</p>
+      <div class="track" data-shelf="w">
+        <article class="card rv" style="--i:0" data-code="W01">
+          <div class="ph"><span class="badge">Hero</span><span class="code">W01</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
+            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Scrunch Legging</h3><span class="price">$78</span></div>
+          <div class="swatches" role="group" aria-label="Scrunch Legging colorways">
+            <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"><i></i></button>
+            <button class="swatch" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:1" data-code="W02">
+          <div class="ph"><span class="code">W02</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
+            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Scrunch Sports Bra</h3><span class="price">$48</span></div>
+          <div class="swatches" role="group" aria-label="Scrunch Sports Bra colorways">
+            <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"><i></i></button>
+            <button class="swatch" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:2" data-code="W03">
+          <div class="ph"><span class="code">W03</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
+            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Biker Short</h3><span class="price">$44</span></div>
+          <div class="swatches" role="group" aria-label="Biker Short colorways">
+            <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"><i></i></button>
+            <button class="swatch" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:3" data-code="W04">
+          <div class="ph"><span class="code">W04</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
+            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Seamless Set</h3><span class="price">$92</span></div>
+          <div class="swatches" role="group" aria-label="Seamless Set colorways">
+            <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"><i></i></button>
+            <button class="swatch" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:4" data-code="W05">
+          <div class="ph"><span class="code">W05</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
+            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Cropped Hoodie</h3><span class="price">$88</span></div>
+          <div class="swatches" role="group" aria-label="Cropped Hoodie colorways">
+            <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"><i></i></button>
+            <button class="swatch" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:5" data-code="W06">
+          <div class="ph"><span class="code">W06</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Sage Mint" style="background:linear-gradient(165deg,rgba(174,198,182,.30),rgba(174,198,182,.06) 70%)"></span>
+            <span class="tint" data-cw="Mocha" style="background:linear-gradient(165deg,rgba(143,115,97,.32),rgba(143,115,97,.07) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Longline Bra + Flare</h3><span class="price">$118</span></div>
+          <div class="swatches" role="group" aria-label="Longline Bra and Flare colorways">
+            <button class="swatch" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"><i></i></button>
+            <button class="swatch" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"><i></i></button>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · legging spotlight — scroll-spin turntable -->
+<section id="spot" class="pin" aria-label="Scrunch Legging spotlight">
+  <div class="stage">
+    <div class="glowpool" id="spotGlow"></div>
+    <div class="spot-head">
+      <span class="micro rv">Hero piece</span>
+      <h2 class="rv" style="--i:1">Scrunch Legging</h2>
+      <span class="micro rv" style="--i:2;letter-spacing:.22em">$78 — squat-proof · sculpting V-yoke</span>
+    </div>
+    <div class="spot-stagebox">
+      <div id="legWrap">
+        <svg viewBox="0 0 200 400" aria-hidden="true">
+          <g id="legBase">
+            <path class="lg-body" fill="#2b2b28" d="M68 24 C64 50 58 78 60 108 C61 130 68 148 74 164 C79 200 76 250 73 300 C71 332 71 356 72 380 L90 380 C91 344 93 300 95 254 C96 224 98 204 100 192 C102 204 104 224 105 254 C107 300 109 344 110 380 L128 380 C129 356 129 332 127 300 C124 250 121 200 126 164 C132 148 139 130 140 108 C142 78 136 50 132 24 Z"/>
+            <path class="lg-band" fill="#21201d" d="M67 24 L133 24 L131.5 44 L68.5 44 Z"/>
+            <path class="lg-yoke" fill="none" stroke="rgba(244,241,234,.3)" stroke-width="1.6" d="M68.5 44 L100 80 L131.5 44"/>
+            <path class="lg-pipe" fill="none" stroke="rgba(244,241,234,.55)" stroke-width="2" d="M62 100 C63 130 70 150 75 170 C80 206 77 252 74 300 C72.5 330 72 356 73 378"/>
+            <path class="lg-pipe" fill="none" stroke="rgba(244,241,234,.55)" stroke-width="2" d="M138 100 C137 130 130 150 125 170 C120 206 123 252 126 300 C127.5 330 128 356 127 378"/>
+            <path class="lg-pkt" fill="none" stroke="rgba(244,241,234,.5)" stroke-width="1.4" stroke-dasharray="4 3" d="M106 28 L128 28 L127 40 L105.5 40 Z"/>
+            <path class="lg-hem" fill="none" stroke="rgba(244,241,234,.22)" stroke-width="1.2" d="M72 368 L90 368 M110 368 L128 368"/>
+          </g>
+        </svg>
+        <div id="legVeil"></div>
+        <svg id="legSweep" viewBox="0 0 200 400" aria-hidden="true"></svg>
+        <div class="pedestal"></div>
+      </div>
+      <div class="callout" id="co1" style="left:50%;top:15%">
+        <span class="dot" style="left:-4px;top:-4px"></span>
+        <span class="lab" style="left:12px;top:-46px"><b>V-yoke</b>Sculpts — lifts, never digs</span>
+      </div>
+      <div class="callout" id="co2" style="left:31%;top:40%">
+        <span class="dot" style="left:-4px;top:-4px"></span>
+        <span class="lab" style="left:10px;top:14px"><b>Contrast piping</b>One clean line, leg for days</span>
+      </div>
+      <div class="callout" id="co3" style="left:60%;top:8%">
+        <span class="dot" style="left:-4px;top:-4px"></span>
+        <span class="lab" style="left:12px;top:-10px"><b>Hidden pocket</b>Key, card, gone</span>
+      </div>
+    </div>
+    <p id="spotHud" aria-hidden="true">FRAME <b>01</b> / <span id="hudTotal">24</span></p>
+    <div class="chips">
+      <span id="chipName">Core Black</span>
+      <div class="chiprow" role="group" aria-label="Legging colorways">
+        <button class="chip" style="--c:var(--w-cb)" aria-pressed="true" aria-label="Core Black"
+          data-cw="Core Black" data-body="#2b2b28" data-band="#21201d" data-glow="rgba(160,160,170,.13)"><i></i></button>
+        <button class="chip" style="--c:var(--w-sm)" aria-pressed="false" aria-label="Sage Mint"
+          data-cw="Sage Mint" data-body="#47564d" data-band="#39463e" data-glow="rgba(174,198,182,.15)"><i></i></button>
+        <button class="chip" style="--c:var(--w-mc)" aria-pressed="false" aria-label="Mocha"
+          data-cw="Mocha" data-body="#4a3d33" data-band="#3b3129" data-glow="rgba(163,124,96,.15)"><i></i></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · men's shelf — slides the other way -->
+<section id="men" class="shelf pin" aria-label="Men's collection">
+  <div class="stage">
+    <div class="shelf-head">
+      <h2 class="rv">Men<sup>02</sup></h2>
+      <p class="micro rv" style="--i:1">Six pieces · three colorways<br>Core Black / Olive / Graphite</p>
+    </div>
+    <div>
+      <p class="swipehint">Swipe</p>
+      <div class="track" data-shelf="m">
+        <article class="card rv" style="--i:0" data-code="M01">
+          <div class="ph"><span class="code">M01</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
+            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>2-in-1 Training Short</h3><span class="price">$58</span></div>
+          <div class="swatches" role="group" aria-label="Training Short colorways">
+            <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--m-ol)" aria-pressed="false" aria-label="Olive"><i></i></button>
+            <button class="swatch" style="--c:var(--m-gr)" aria-pressed="false" aria-label="Graphite"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:1" data-code="M02">
+          <div class="ph"><span class="code">M02</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
+            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Performance Tee</h3><span class="price">$42</span></div>
+          <div class="swatches" role="group" aria-label="Performance Tee colorways">
+            <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--m-ol)" aria-pressed="false" aria-label="Olive"><i></i></button>
+            <button class="swatch" style="--c:var(--m-gr)" aria-pressed="false" aria-label="Graphite"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:2" data-code="M03">
+          <div class="ph"><span class="code">M03</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
+            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Muscle Tank</h3><span class="price">$38</span></div>
+          <div class="swatches" role="group" aria-label="Muscle Tank colorways">
+            <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--m-ol)" aria-pressed="false" aria-label="Olive"><i></i></button>
+            <button class="swatch" style="--c:var(--m-gr)" aria-pressed="false" aria-label="Graphite"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:3" data-code="M04">
+          <div class="ph"><span class="code">M04</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
+            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Tapered Jogger</h3><span class="price">$84</span></div>
+          <div class="swatches" role="group" aria-label="Tapered Jogger colorways">
+            <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--m-ol)" aria-pressed="false" aria-label="Olive"><i></i></button>
+            <button class="swatch" style="--c:var(--m-gr)" aria-pressed="false" aria-label="Graphite"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:4" data-code="M05">
+          <div class="ph"><span class="code">M05</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
+            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Heavyweight Hoodie</h3><span class="price">$98</span></div>
+          <div class="swatches" role="group" aria-label="Heavyweight Hoodie colorways">
+            <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--m-ol)" aria-pressed="false" aria-label="Olive"><i></i></button>
+            <button class="swatch" style="--c:var(--m-gr)" aria-pressed="false" aria-label="Graphite"><i></i></button>
+          </div>
+        </article>
+        <article class="card rv" style="--i:5" data-code="M06">
+          <div class="ph"><span class="code">M06</span>
+            <span class="tint" data-cw="Core Black" style="background:linear-gradient(165deg,rgba(82,82,86,.36),rgba(82,82,86,.10) 70%)"></span>
+            <span class="tint" data-cw="Olive" style="background:linear-gradient(165deg,rgba(93,103,83,.32),rgba(93,103,83,.07) 70%)"></span>
+            <span class="tint" data-cw="Graphite" style="background:linear-gradient(165deg,rgba(75,79,87,.34),rgba(75,79,87,.08) 70%)"></span>
+            <span class="strip"><span>Awaiting render</span><span class="cw">Core Black</span></span></div>
+          <div class="meta"><h3>Compression Long-Sleeve</h3><span class="price">$54</span></div>
+          <div class="swatches" role="group" aria-label="Compression Long-Sleeve colorways">
+            <button class="swatch" style="--c:var(--m-cb)" aria-pressed="true" aria-label="Core Black"><i></i></button>
+            <button class="swatch" style="--c:var(--m-ol)" aria-pressed="false" aria-label="Olive"><i></i></button>
+            <button class="swatch" style="--c:var(--m-gr)" aria-pressed="false" aria-label="Graphite"><i></i></button>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · lookbook -->
+<section id="lookbook" aria-label="Lookbook">
+  <div class="lb-head">
+    <span class="micro rv">03 / Lookbook</span>
+    <h2 class="rv" style="--i:1;font-size:clamp(34px,6.4vw,76px);font-style:italic;text-transform:uppercase">Shot on location</h2>
+  </div>
+  <div class="panel p1"><div class="bgl"></div><span class="num" aria-hidden="true">01</span>
+    <span class="frametag">Awaiting shoot — L01</span>
+    <div class="cap"><span class="micro">Women / Sage Mint</span><h3>Golden hour, concrete</h3></div>
+  </div>
+  <div class="panel p2"><div class="bgl"></div><span class="num" aria-hidden="true">02</span>
+    <span class="frametag">Awaiting shoot — L02</span>
+    <div class="cap"><span class="micro">Men / Olive</span><h3>Street, after the session</h3></div>
+  </div>
+  <div class="panel p3"><div class="bgl"></div><span class="num" aria-hidden="true">03</span>
+    <span class="frametag">Awaiting shoot — L03</span>
+    <div class="cap"><span class="micro">Duo / Core Black</span><h3>Under the rack lights</h3></div>
+  </div>
+  <div class="panel p4"><div class="bgl"></div><span class="num" aria-hidden="true">04</span>
+    <span class="frametag">Awaiting shoot — L04</span>
+    <div class="cap"><span class="micro">Detail / Mocha</span><h3>Seams up close</h3></div>
+  </div>
+</section>
+
+<!-- 8 · accessories marquee -->
+<section id="accs" aria-label="Accessories">
+  <div class="lb-head">
+    <span class="micro rv">04 / Carry</span>
+    <h2 class="rv" style="--i:1;font-size:clamp(34px,6.4vw,76px);font-style:italic;text-transform:uppercase">Everything else, black</h2>
+  </div>
+  <div class="marquee">
+    <div class="mq-track">
+      <div class="mq-half">
+        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+      </div>
+      <div class="mq-half" aria-hidden="true">
+        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+        <span class="mq-item"><span class="thumb">A01</span><span class="nm">Gym Duffel</span><span class="pr">$68</span></span>
+        <span class="mq-item"><span class="thumb">A02</span><span class="nm">F² Cap</span><span class="pr">$32</span></span>
+        <span class="mq-item"><span class="thumb">A03</span><span class="nm">Crew Socks ×3</span><span class="pr">$16</span></span>
+        <span class="mq-item"><span class="thumb">A04</span><span class="nm">Shaker Bottle</span><span class="pr">$24</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · signup -->
+<section id="join" aria-label="Email signup">
+  <span class="micro rv">The drop is limited. The list isn't.</span>
+  <h2 class="rv" style="--i:1">Get the drop first</h2>
+  <p class="sub rv" style="--i:2">First access, 48 hours before anyone else. No spam — one email when it matters.</p>
+  <form id="joinForm" novalidate>
+    <input type="email" name="email" autocomplete="email" inputmode="email" placeholder="Your email" aria-label="Email address" required>
+    <span class="magwrap"><button id="joinBtn" type="submit">Join F²</button></span>
+  </form>
+  <p id="joinMsg" aria-live="polite"></p>
+  <p class="done-line">You're in. Welcome to Forever.</p>
+</section>
+
+</main>
+
+<footer>
+  <div class="sign">
+    <svg viewBox="0 0 130 132" class="mark"><use href="#f2mark"/></svg>
+    <div class="rulebar"><span class="signword">Fitness&nbsp;Forever</span></div>
+  </div>
+  <div class="cols"><span>Instagram</span><span>TikTok</span><span>YouTube</span></div>
+  <p class="fine">© 2026 F² Apparel — skeleton build v0.1 · placeholder renders</p>
+</footer>
+
+<div id="cglow" aria-hidden="true"></div>
+
+<script>
+(()=>{ "use strict";
+const doc=document,root=doc.documentElement;
+const $=(s,c)=> (c||doc).querySelector(s), $$=(s,c)=>[...(c||doc).querySelectorAll(s)];
+const TOUCH=root.classList.contains('touch');
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const easeIO=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const on=(el,ev,fn,op)=>el.addEventListener(ev,fn,op||{passive:true});
+
+/* ---------- loader: sign flickers on, then scroll unlocks ---------- */
+try{
+  const loader=$('#loader');let killed=false;
+  const kill=()=>{ if(killed)return; killed=true;
+    root.classList.remove('loading'); loader.classList.add('done');
+    setTimeout(()=>loader.remove(),900);
+  };
+  on(window,'load',()=>setTimeout(kill,250));
+  setTimeout(kill,900);
+}catch(e){console.warn('[f2 loader]',e); root.classList.remove('loading');}
+
+/* ---------- scroll engine: one rAF, transform/opacity only ---------- */
+const tracks=[]; let vh=innerHeight;
+/* mode 'pin': p=0..1 across (height - vh). mode 'inout': p=0..1 from enter-bottom to leave-top */
+function reg(el,fn,mode){ tracks.push({el,fn,mode:mode||'pin',start:0,len:1,on:false}); }
+function measure(){
+  vh=innerHeight;
+  const y=scrollY;
+  for(const t of tracks){
+    const r=t.el.getBoundingClientRect(), top=r.top+y;
+    if(t.mode==='pin'){ t.start=top; t.len=Math.max(1,t.el.offsetHeight-vh); }
+    else { t.start=top-vh; t.len=Math.max(1,vh+t.el.offsetHeight); }
+  }
+  heroMeasure(); shelfMeasure();
+  lastY=-1; /* force repaint pass */
+}
+let lastY=-1;
+function frame(){
+  const y=scrollY;
+  if(y!==lastY){
+    lastY=y;
+    navEl.classList.toggle('solid', y>navSolidAt);
+    for(const t of tracks){
+      const raw=(y-t.start)/t.len;
+      if(raw>=-0.12&&raw<=1.12){ t.fn(clamp(raw,0,1),raw); t.on=true; }
+      else if(t.on){ t.fn(clamp(raw,0,1),raw); t.on=false; }
+    }
+    if(FINE) glowStep();
+  } else if(FINE) glowStep();
+  requestAnimationFrame(frame);
+}
+const FINE=!TOUCH;
+const navEl=$('#nav'); let navSolidAt=vh*1.4;
+
+/* ---------- hero: sign turns, then flies into the nav ---------- */
+const heroLogo=$('#heroLogo'),heroStage=$('#heroStage'),navLogo=$('#navLogo'),
+      heroTag=$('#heroTag'),cue=$('.scrollcue',heroStage),face=$('.face',heroLogo);
+let hDx=0,hDy=0,hSc=.14;
+function heroMeasure(){
+  try{
+    const st=heroStage.getBoundingClientRect();
+    const cx=st.left+st.width/2, cy=st.top+st.height/2;
+    const nr=navLogo.getBoundingClientRect();
+    hDx=(nr.left+nr.width/2)-cx; hDy=(nr.top+nr.height/2)-cy;
+    hSc=Math.max(.05,nr.height/Math.max(1,heroLogo.offsetHeight));
+    navSolidAt=$('#hero').offsetHeight-vh*0.55;
+  }catch(e){}
+}
+try{
+  if(RM){
+    reg($('#hero'),(p)=>{ navLogo.classList.toggle('on',p>.92);
+      heroLogo.style.opacity=p>.92?0:1; heroStage.classList.toggle('off',p>=1);
+    });
+  }else{
+    const SPIN=.72;
+    reg($('#hero'),(p,raw)=>{
+      let tr;
+      if(p<SPIN){
+        const q=p/SPIN, ry=q*360, rx=Math.sin(q*Math.PI*2)*5;
+        tr='rotateY('+ry+'deg) rotateX('+rx+'deg)';
+        if(FINE) face.style.opacity=String(.82+.18*Math.abs(Math.cos(q*Math.PI*2)));
+      }else{
+        const q=easeIO((p-SPIN)/(1-SPIN));
+        tr='translate3d('+hDx*q+'px,'+hDy*q+'px,0) rotateY(360deg) scale('+(1+(hSc-1)*q)+')';
+      }
+      heroLogo.style.transform=tr;
+      const fade=clamp(1-p*5,0,1);
+      heroTag.style.opacity=cue.style.opacity=String(fade);
+      heroLogo.style.opacity=String(p>.985?0:1);
+      navLogo.classList.toggle('on',p>.985);
+      heroStage.classList.toggle('off',raw>1.03);
+    });
+  }
+}catch(e){console.warn('[f2 hero]',e)}
+
+/* ---------- statement: mask-reveal word fills (compositor-only) ---------- */
+try{
+  const words=$$('.bigword'),kick=$('#stKicker');
+  const set=(w,q)=>{ const R=(1-q)*100.5;
+    $('.fillmask',w).style.transform='translate3d(-'+R+'%,0,0)';
+    $('.filltext',w).style.transform='translate3d('+R+'%,0,0)';
+  };
+  if(RM){ words.forEach(w=>set(w,1)); kick.classList.add('on'); }
+  else reg($('#statement'),(p)=>{
+    set(words[0],easeIO(clamp((p-.04)/.4,0,1)));
+    set(words[1],easeIO(clamp((p-.46)/.4,0,1)));
+    kick.classList.toggle('on',p>.88);
+  });
+}catch(e){console.warn('[f2 statement]',e)}
+
+/* ---------- shelves: desktop scroll-pan / phone native swipe ---------- */
+const shelves=[{sec:$('#women'),track:$('[data-shelf="w"]'),rev:false},
+               {sec:$('#men'),track:$('[data-shelf="m"]'),rev:true}];
+function shelfMeasure(){
+  if(!FINE) return;
+  for(const s of shelves){
+    s.pan=Math.max(0,s.track.scrollWidth-s.sec.querySelector('.stage').clientWidth+Math.round(innerWidth*.05));
+    s.sec.style.height=(vh+s.pan)+'px';
+    if(s.rev) s.track.style.transform='translate3d('+(-s.pan)+'px,0,0)';
+  }
+}
+try{
+  if(FINE&&!RM){
+    for(const s of shelves) reg(s.sec,(p)=>{
+      const x=s.rev? -s.pan*(1-p) : -s.pan*p;
+      s.track.style.transform='translate3d('+x+'px,0,0)';
+    });
+  } else if(FINE&&RM){
+    for(const s of shelves){ s.sec.style.height='auto';
+      const st=s.sec.querySelector('.stage'); st.style.position='static'; st.style.height='auto';
+      s.track.style.overflowX='auto'; s.track.style.transform='none';
+    }
+  } else {
+    /* touch: hide the swipe hint after first real swipe */
+    $$('.track').forEach(tr=>on(tr,'scroll',()=>{
+      const h=tr.parentElement.querySelector('.swipehint'); if(h) h.classList.add('gone');
+    },{passive:true,once:true}));
+  }
+}catch(e){console.warn('[f2 shelves]',e)}
+
+/* ---------- swatches: crossfade tints on every card ---------- */
+try{
+  on(doc,'click',e=>{
+    const b=e.target.closest('.swatch'); if(!b) return;
+    const card=b.closest('.card'), i=[...b.parentElement.children].indexOf(b);
+    $$('.swatch',card).forEach((s,k)=>s.setAttribute('aria-pressed',String(k===i)));
+    const tints=$$('.tint',card);
+    tints.forEach((t,k)=>t.classList.toggle('on',k===i));
+    const strip=$('.strip .cw',card); if(strip&&tints[i]) strip.textContent=tints[i].dataset.cw;
+  },{passive:true});
+  /* Core Black starts active */
+  $$('.card').forEach(c=>{const t=$('.tint',c); if(t) t.classList.add('on');});
+}catch(e){console.warn('[f2 swatches]',e)}
+
+/* ---------- spotlight: stepped scroll-spin + callouts + color sweep ---------- */
+try{
+  const FRAMES=TOUCH?16:24;
+  $('#hudTotal').textContent=String(FRAMES).padStart(2,'0');
+  const wrap=$('#legWrap'),veil=$('#legVeil'),hud=$('#spotHud b');
+  const co=[$('#co1'),$('#co2'),$('#co3')];
+  let lastFi=-1;
+  if(RM){ co.forEach(c=>c.classList.add('show')); }
+  else reg($('#spot'),(p)=>{
+    const fi=Math.round(p*FRAMES)%FRAMES;
+    if(fi!==lastFi){ lastFi=fi;
+      const a=fi/FRAMES*Math.PI*2, c=Math.cos(a);
+      const sx=(c<0?-1:1)*(.3+.7*Math.abs(c));
+      wrap.style.transform='scaleX('+sx+') rotate('+(Math.sin(a)*1.6)+'deg)';
+      veil.style.opacity=c<0?.38:0;
+      hud.textContent=String(fi+1).padStart(2,'0');
+    }
+    co[0].classList.toggle('show',p>.07&&p<.33);
+    co[1].classList.toggle('show',p>.37&&p<.63);
+    co[2].classList.toggle('show',p>.67&&p<.93);
+  });
+  /* colorway morph */
+  const base=$('#legBase'),sweep=$('#legSweep'),glow=$('#spotGlow'),nameEl=$('#chipName');
+  const paint=(g,body,band)=>{ $('.lg-body',g).setAttribute('fill',body); $('.lg-band',g).setAttribute('fill',band); };
+  sweep.innerHTML=base.outerHTML.replace('id="legBase"','id="legCopy"');
+  on(doc,'click',e=>{
+    const chip=e.target.closest('.chip'); if(!chip) return;
+    $$('.chip').forEach(c=>c.setAttribute('aria-pressed',String(c===chip)));
+    nameEl.textContent=chip.dataset.cw;
+    glow.style.setProperty('--glowc',chip.dataset.glow);
+    const g=$('#legCopy',sweep); paint(g,chip.dataset.body,chip.dataset.band);
+    sweep.classList.remove('sweep'); void sweep.offsetWidth; sweep.classList.add('sweep');
+    const done=()=>{ paint(base,chip.dataset.body,chip.dataset.band); sweep.classList.remove('sweep'); };
+    sweep.addEventListener('animationend',done,{once:true});
+    if(RM) done();
+  },{passive:true});
+}catch(e){console.warn('[f2 spotlight]',e)}
+
+/* ---------- lookbook parallax (IO-gated, cheap) ---------- */
+try{
+  if(!RM) $$('.panel').forEach(pn=>{
+    const bg=$('.bgl',pn),cap=$('.cap',pn);
+    reg(pn,(p)=>{ const rel=p*2-1;
+      bg.style.transform='translate3d(0,'+(rel*7)+'%,0)';
+      cap.style.transform='translate3d(0,'+(rel*-16)+'px,0)';
+    },'inout');
+  });
+}catch(e){console.warn('[f2 lookbook]',e)}
+
+/* ---------- reveals ---------- */
+try{
+  const io=new IntersectionObserver(es=>es.forEach(en=>{
+    if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+  }),{threshold:.18});
+  $$('.rv').forEach(el=>io.observe(el));
+}catch(e){ $$('.rv').forEach(el=>el.classList.add('in')); }
+
+/* ---------- signup ---------- */
+try{
+  const form=$('#joinForm'),msg=$('#joinMsg'),join=$('#join');
+  form.addEventListener('submit',e=>{
+    e.preventDefault();
+    const v=form.email.value.trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)){
+      form.classList.add('err'); msg.classList.add('bad');
+      msg.textContent='That email doesn’t look right — check it and try again.';
+      return;
+    }
+    form.classList.remove('err'); msg.classList.remove('bad'); msg.textContent='';
+    try{localStorage.setItem('f2_signup',v)}catch(_){}
+    join.classList.add('done');
+  });
+}catch(e){console.warn('[f2 signup]',e)}
+
+/* ---------- desktop-only: magnetic button, card tilt, cursor glow ----------
+   guarded by FINE — none of this ever runs on touch devices */
+let glowStep=()=>{};
+if(FINE&&!RM){ try{
+  /* magnetic join button */
+  const btn=$('#joinBtn'),mw=$('.magwrap');
+  on(mw,'mousemove',e=>{
+    const r=mw.getBoundingClientRect();
+    const dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+    btn.style.transform='translate3d('+clamp(dx*.22,-12,12)+'px,'+clamp(dy*.3,-9,9)+'px,0)';
+  });
+  on(mw,'mouseleave',()=>{ btn.style.transition='transform .35s cubic-bezier(.2,.8,.2,1)';
+    btn.style.transform='none'; setTimeout(()=>btn.style.transition='',360); });
+  /* card tilt */
+  let tiltEl=null;
+  on(doc,'mousemove',e=>{
+    const ph=e.target.closest?e.target.closest('.ph'):null;
+    if(tiltEl&&tiltEl!==ph){ tiltEl.style.transform='perspective(700px)'; tiltEl=null; }
+    if(ph){ tiltEl=ph; const r=ph.getBoundingClientRect();
+      const x=(e.clientX-r.left)/r.width-.5, y=(e.clientY-r.top)/r.height-.5;
+      ph.style.transform='perspective(700px) rotateX('+(-y*4)+'deg) rotateY('+(x*5)+'deg)';
+    }
+  });
+  /* tungsten cursor glow */
+  const cg=$('#cglow'); let gx=innerWidth/2,gy=innerHeight/2,tx=gx,ty=gy;
+  on(doc,'mousemove',e=>{tx=e.clientX;ty=e.clientY;});
+  glowStep=()=>{ gx+=(tx-gx)*.12; gy+=(ty-gy)*.12;
+    cg.style.transform='translate3d('+(gx-170)+'px,'+(gy-170)+'px,0)'; };
+}catch(e){console.warn('[f2 desktop-fx]',e)} }
+
+/* ---------- boot ---------- */
+measure();
+on(window,'resize',()=>{clearTimeout(measure._t);measure._t=setTimeout(measure,140)});
+on(window,'orientationchange',()=>setTimeout(measure,220));
+on(window,'load',()=>setTimeout(measure,80));
+requestAnimationFrame(frame);
+})();
+</script>
+<!--F2:/BODY-->
+</body>
+</html>
