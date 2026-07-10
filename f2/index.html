@@ -278,6 +278,11 @@ html.fine .ph:hover{border-color:var(--faint)}
 
 
 /* ============ v2: real renders + films ============ */
+@supports not (aspect-ratio: 1 / 1){
+  .ph{height:auto;padding-bottom:133.4%}
+  .spot-stagebox{width:min(29vh,240px)}
+  #heroLogo{height:min(65vw,436px)}
+}
 .ph .pimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .38s ease}
 .ph .pimg.on{opacity:1}
 .ph .strip{background:linear-gradient(transparent,rgba(10,9,8,.82) 40%);padding-top:20px}
@@ -319,6 +324,16 @@ html.fine .ph:hover{border-color:var(--faint)}
    desktop-only modules key off this and are never initialized on touch */
 document.documentElement.classList.add(
   matchMedia('(pointer: coarse)').matches ? 'touch' : 'fine');
+/* visible error beacon: if anything throws on-device, show it so a screenshot tells us why */
+window.onerror=function(m,src,ln){try{var d=document.getElementById('errbeacon');
+if(!d){d=document.createElement('div');d.id='errbeacon';
+d.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#3a1008;color:#ffc9a8;font:10px/1.5 monospace;padding:6px 9px;white-space:pre-wrap';
+(document.body||document.documentElement).appendChild(d);}
+d.textContent='ERR: '+m+' (line '+ln+')';}catch(e){} return false;};
+/* loader failsafe: even if every other script dies, unlock scroll */
+setTimeout(function(){var l=document.getElementById('loader');
+document.documentElement.className=document.documentElement.className.replace(/\bloading\b/,'');
+if(l){l.className+=' done';setTimeout(function(){if(l.parentNode)l.parentNode.removeChild(l)},800);}},1600);
 </script>
 <!--F2:BODY-->
 
@@ -830,9 +845,12 @@ function frame(){
     lastY=y;
     navEl.classList.toggle('solid', y>navSolidAt);
     for(const t of tracks){
+      if(t.dead) continue;
       const raw=(y-t.start)/t.len;
-      if(raw>=-0.12&&raw<=1.12){ t.fn(clamp(raw,0,1),raw); t.on=true; }
-      else if(t.on){ t.fn(clamp(raw,0,1),raw); t.on=false; }
+      try{
+        if(raw>=-0.12&&raw<=1.12){ t.fn(clamp(raw,0,1),raw); t.on=true; }
+        else if(t.on){ t.fn(clamp(raw,0,1),raw); t.on=false; }
+      }catch(e){ t.dead=1; console.warn('[f2 track]',e); }
     }
     if(FINE) glowStep();
   } else if(FINE) glowStep();
@@ -955,7 +973,7 @@ try{
       const a=fi/FRAMES*Math.PI*2, c=Math.cos(a);
       const sx=(c<0?-1:1)*(.3+.7*Math.abs(c));
       wrap.style.transform='scaleX('+sx+') rotate('+(Math.sin(a)*1.6)+'deg)';
-      veil.style.opacity=c<0?.38:0;
+      veil.style.opacity=(c<0? .38 : 0);
       hud.textContent=String(fi+1).padStart(2,'0');
     }
     co[0].classList.toggle('show',p>.07&&p<.33);
@@ -1072,7 +1090,7 @@ try{
         if(dur&&v.readyState>1){ const t=Math.min(dur-.06,p*dur);
           if(Math.abs(v.currentTime-t)>.045) v.currentTime=t; }
       }else{
-        if(raw>-.05&&raw<1.05){ if(!playing&&v.src){ playing=true; v.play().catch(()=>{playing=false}); } }
+        if(raw>-.05&&raw<1.05){ if(!playing&&v.src){ playing=true; v.play().catch(()=>{playing=false; v._rej=(v._rej||0)+1; if(v._rej>2)sec.classList.add('novid');}); } }
         else if(playing){ playing=false; v.pause(); try{v.currentTime=0}catch(_){} }
       }
     });
