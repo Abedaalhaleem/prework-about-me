@@ -54,6 +54,8 @@ svg{display:block}
 .sign .rulebar::before,.sign .rulebar::after{background:var(--dim)}
 .signword{font-size:12px;font-weight:800;letter-spacing:.42em;text-transform:uppercase;color:var(--ink);text-indent:.42em}
 @keyframes signon{0%{opacity:0}18%{opacity:.55}30%{opacity:.12}46%{opacity:.85}58%{opacity:.4}70%{opacity:1}}
+#heroLogo{animation:signon .9s steps(1,end) .15s both}
+@media (prefers-reduced-motion:reduce){#heroLogo{animation:none}}
 #loader .glowpool{position:absolute;width:70vmin;height:70vmin;border-radius:50%;
   background:radial-gradient(circle,rgba(var(--tung),.10),transparent 62%);animation:pool .9s ease both}
 @keyframes pool{from{opacity:0}to{opacity:1}}
@@ -85,11 +87,11 @@ html.fine #nav .links{display:flex}
 #hero{height:260vh;background:var(--bg)}
 #hero .stage{display:grid;place-items:center}
 #hero .glowpool{position:absolute;left:50%;top:50%;width:96vmin;height:96vmin;transform:translate(-50%,-50%);
-  border-radius:50%;background:radial-gradient(circle,rgba(var(--tung),.09),transparent 60%)}
+  border-radius:50%;background:radial-gradient(circle,rgba(255,246,224,.16),rgba(var(--tung),.07) 42%,transparent 62%)}
 #hero .stage.off{visibility:hidden}
 .logo3d-wrap{perspective:1100px;position:relative;z-index:2}
 #heroLogo{position:relative;width:min(64vw,430px);aspect-ratio:130/132;transform-style:preserve-3d;will-change:transform}
-#heroLogo .lyr{position:absolute;inset:0;width:100%;height:100%;fill:#3a352d;transform:translateZ(calc(var(--z)*2.4px))}
+#heroLogo .lyr{position:absolute;inset:0;width:100%;height:100%;fill:#2e2822;transform:translateZ(calc(var(--z)*2.4px))}
 #heroLogo .lyr.back{fill:url(#metal)}
 #heroLogo .lyr.face{fill:url(#metal)}
 html.fine #heroLogo .lyr.face{filter:drop-shadow(0 0 22px rgba(244,241,234,.14))}
@@ -341,27 +343,19 @@ if(l){l.className+=' done';setTimeout(function(){if(l.parentNode)l.parentNode.re
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <g id="f2mark">
-      <g transform="translate(24 6) skewX(-14)">
-        <polygon points="6,0 84,0 76,26 6,26"/>
-        <polygon points="6,44 74,44 66,70 6,70"/>
-        <polygon points="6,0 34,0 34,104 10,124 16,70 6,70"/>
+      <g transform="translate(21 4) skewX(-15)">
+        <polygon points="10,0 82,0 75,20 38,20 12,118"/>
+        <polygon points="39,40 76,40 69,62 33,62"/>
       </g>
-      <g transform="translate(102 0) skewX(-14) scale(.62)">
-        <rect x="0" y="0" width="38" height="11"/>
-        <rect x="27" y="11" width="11" height="10"/>
-        <rect x="0" y="21" width="38" height="11"/>
-        <rect x="0" y="32" width="11" height="10"/>
-        <rect x="0" y="42" width="38" height="11"/>
+      <g transform="translate(103 2) skewX(-15) scale(.72)">
+        <path d="M5 0 L36 0 L36 15 L17 29 L36 29 L36 44 L0 44 L0 29 L19 15 L5 15 Z"/>
       </g>
     </g>
-    <linearGradient id="metal" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="130" y2="124">
-      <stop offset="0" stop-color="#c4bfb3"/>
-      <stop offset=".26" stop-color="#f9f6ee"/>
-      <stop offset=".48" stop-color="#cfc9bc"/>
-      <stop offset=".62" stop-color="#fffdf6"/>
-      <stop offset=".84" stop-color="#aaa498"/>
-      <stop offset="1" stop-color="#eee9dd"/>
-    </linearGradient>
+    <radialGradient id="metal" gradientUnits="userSpaceOnUse" cx="60" cy="55" r="95">
+      <stop offset="0" stop-color="#fffef9"/>
+      <stop offset=".55" stop-color="#f8f2e6"/>
+      <stop offset="1" stop-color="#e7dcc6"/>
+    </radialGradient>
   </defs>
 </svg>
 
