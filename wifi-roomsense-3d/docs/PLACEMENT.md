@@ -30,7 +30,8 @@ experiment. Read it before you mount anything.
 A TX–RX pair senses best along the straight line between them. The sensitive
 region around that line is roughly the first Fresnel zone, which is widest
 halfway between the two boards. Its radius there is about ½·√(λ·d), where
-λ ≈ 0.123 m at 2.4 GHz and d is the TX–RX distance:
+λ ≈ 0.123 m in the 2.4 GHz band (2.437 GHz, channel 6; 0.121–0.125 m across the
+band) and d is the TX–RX distance:
 
 | TX–RX distance d | Fresnel radius at mid-point (computed, not measured) |
 |---|---|
@@ -89,9 +90,9 @@ test and not a through-wall test.
 * Keep a clear line of sight between the router and RX1 for this first test.
 * With a dedicated transmitter (ESP-NOW mode), use the same layout with
   `[TX1]` in place of the router.
-* Try it like this: record 2 minutes with nobody moving, then walk across the
-  line a few times. If the score changes, the pipeline responds. That is not
-  validation.
+* Try it like this: record a 2-minute quiet baseline with nobody moving (the
+  score needs one; see `CALIBRATION.md`), then walk across the line a few times.
+  If the score changes, the pipeline responds. That is not validation.
 
 ## (b) Through-wall, single link: the link must pass through the target room
 

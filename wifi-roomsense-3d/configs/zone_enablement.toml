@@ -1,8 +1,8 @@
 # Zone estimation (capability C): enablement criteria.
 #
 # These criteria were written BEFORE any zone data or model existed. They must
-# not be lowered after seeing results just to unlock the feature. The SHA-256
-# of this file's content is the `criteria_version`. It is recorded in every
+# not be lowered after seeing results just to unlock the feature. The first 16
+# hex digits of the SHA-256 of this file's bytes are the `criteria_version`. It is recorded in every
 # training report and bound to every model. If the file changes, every model
 # trained under the old version goes back to DISABLED (reason CRITERIA_CHANGED)
 # and has to be re-evaluated on new held-out sessions.

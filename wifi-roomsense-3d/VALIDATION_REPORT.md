@@ -11,7 +11,7 @@
 | Level | Status | Evidence |
 |---|---|---|
 | Software tested | **Yes, on synthetic and fixture data only** | Automated tests executed in the build container: backend `pytest`, frontend `vitest` plus typecheck and build, and firmware host tests (`make -C firmware/esp32/host_tests test`). See `PROGRESS_LOG.md` for the exact counts. These tests show that code paths behave as specified: parsing, gap handling, state machine, gates, API rules. They say **nothing** about sensing accuracy. |
-| Firmware compiled | **No** | The ESP-IDF toolchain could not be downloaded in the build container. Only host unit tests of the firmware core and a header-level syntax check were run. See `firmware/esp32/README.md`. |
+| Firmware compiled | **No** | The ESP-IDF toolchain could not be downloaded in the build container. Only host unit tests of the firmware core, compile-only checks of that portable core (gcc with extra warnings; clang for rv32imc), and a header-level syntax check of the two apps were run. None of these is a firmware build. See `firmware/esp32/README.md`. |
 | Hardware tested | **No** | No ESP32 board was available. |
 | Through-wall validated | **No** | Requires the protocol below, run with real hardware in your own layout. |
 
@@ -70,7 +70,7 @@ The **Validation** page shows the same report, with a markdown download.
 
 Generated: 2026-09-29 04:39:38 UTC  
 Protocol: through-wall-protocol-v1  
-Criteria: `through_wall_criteria.toml` (criteria_version `e76147a9ab732095`)  
+Criteria: `through_wall_criteria.toml` (criteria_version `059548fab1041092`)  
 Schema version: 1.0.0
 
 #### Through-wall status: UNVERIFIED
@@ -89,7 +89,7 @@ Unmet requirements:
 |---|---|---|
 | software_tested | NOT MEASURED | Automated tests on synthetic and fixture data. They show that code paths run, not that sensing works. This report does not run them. |
 | hardware_tested | no | True only if at least one LIVE validation run logged motion decisions from real receivers. |
-| through_wall_validated | no | Predefined criteria e76147a9ab732095 evaluated on LIVE runs of the current setup. |
+| through_wall_validated | no | Predefined criteria 059548fab1041092 evaluated on LIVE runs of the current setup. |
 
 #### Setup the status refers to
 

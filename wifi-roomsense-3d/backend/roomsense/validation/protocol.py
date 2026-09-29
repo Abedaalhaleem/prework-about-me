@@ -78,7 +78,9 @@ GENERAL_RULES: tuple[str, ...] = (
     "Use LIVE hardware. SIMULATION runs and replays are listed in the report but never count as evidence.",
     "Do not change placement, wall, channel, firmware or detection thresholds between runs you want to combine; "
     "the report groups runs by placement, wall description and channel.",
-    "Record a fresh quiet baseline (calibration) before the runs and keep it for the whole series.",
+    "Record a fresh quiet baseline (calibration) at the start of each session. A baseline applies only to "
+    "the session it was recorded in (stopping the source or restarting the server discards it), so keep one "
+    "LIVE session running for a whole series where you can.",
     "Enter label events at the moment things happen. Label from what you observe, never from the RoomSense display.",
     "Decide the criteria (configs/through_wall_criteria.toml) before collecting data and do not lower them "
     "after seeing results. The report records the criteria hash (criteria_version).",

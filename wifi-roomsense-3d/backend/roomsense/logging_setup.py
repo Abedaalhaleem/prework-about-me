@@ -10,8 +10,9 @@ stream). Three rules keep logs safe to share:
   replaced wherever they appear, including inside exception tracebacks.
 * **No request bodies.** The HTTP layer logs method, path, status and
   duration only (see :mod:`roomsense.api.app`). Query strings are not logged.
-* **Bounded size.** A single message is truncated to ``MAX_MESSAGE_CHARS`` so a
-  misbehaving device cannot flood the log with one huge line.
+* **Bounded size.** A single message is clipped to ``MAX_MESSAGE_CHARS`` so a
+  misbehaving device cannot flood the log with one huge line. Clipping keeps
+  the start *and* the end, because the end of a traceback names the error.
 """
 
 from __future__ import annotations
@@ -36,6 +37,14 @@ __all__ = [
 
 REDACTED = "[REDACTED]"
 MAX_MESSAGE_CHARS = 4000
+
+
+def _clip(text: str, limit: int = MAX_MESSAGE_CHARS) -> str:
+    """Bound ``text`` to about ``limit`` characters, keeping head and tail."""
+    if len(text) <= limit:
+        return text
+    keep = max(limit // 2 - 40, 1)
+    return f"{text[:keep]} ...[{len(text) - 2 * keep} chars omitted]... {text[-keep:]}"
 
 # Patterns for credentials that may appear in free text. They are applied in
 # addition to exact matches of registered secrets.
@@ -85,7 +94,7 @@ def _redact_value(v: Any, depth: int = 0) -> Any:
     if depth > 4:
         return "[depth-limit]"
     if isinstance(v, str):
-        return redact(v)[:MAX_MESSAGE_CHARS]
+        return _clip(redact(v))
     if isinstance(v, (int, float, bool)) or v is None:
         return v
     if isinstance(v, dict):
@@ -99,7 +108,7 @@ def _redact_value(v: Any, depth: int = 0) -> Any:
         return out
     if isinstance(v, (list, tuple)):
         return [_redact_value(x, depth + 1) for x in list(v)[:64]]
-    return redact(str(v))[:MAX_MESSAGE_CHARS]
+    return _clip(redact(str(v)))
 
 
 class RedactionFilter(logging.Filter):
@@ -114,7 +123,7 @@ class RedactionFilter(logging.Filter):
             msg = record.getMessage()
         except Exception:  # a bad format string must not drop the record
             msg = f"{record.msg!r} (unformattable args)"
-        record.msg = redact(msg)[:MAX_MESSAGE_CHARS]
+        record.msg = _clip(redact(msg))
         record.args = None
         return True
 
@@ -128,14 +137,14 @@ class JsonFormatter(logging.Formatter):
             + f".{int(record.msecs):03d}Z",
             "level": record.levelname,
             "logger": record.name,
-            "msg": redact(record.getMessage())[:MAX_MESSAGE_CHARS],
+            "msg": _clip(redact(record.getMessage())),
         }
         for key, value in record.__dict__.items():
             if key in _STANDARD_ATTRS or key.startswith("_"):
                 continue
             payload[key] = _redact_value(value)
         if record.exc_info:
-            payload["exc"] = redact(self.formatException(record.exc_info))[: MAX_MESSAGE_CHARS * 2]
+            payload["exc"] = _clip(redact(self.formatException(record.exc_info)), MAX_MESSAGE_CHARS * 2)
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 

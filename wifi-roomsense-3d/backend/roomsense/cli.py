@@ -85,7 +85,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     host = cfg.server.host
     shown = f"[{host}]" if ":" in host else host
-    print(f"RoomSense {__version__} serving on http://{shown}:{cfg.server.port}", file=sys.stderr)
+    print(f"RoomSense {__version__} starting on http://{shown}:{cfg.server.port}", file=sys.stderr)
     uvicorn.run(
         app,
         host=host,
@@ -253,7 +253,8 @@ def _lock_data_dir(cfg: AppConfig, action: str, stack: ExitStack) -> bool:
             raise
         _err(f"DATA_DIR_LOCKED: {data_dir} is in use by a running RoomSense server (or another roomsense "
              f"command), so it cannot {action} now. Stop the server (scripts/stop.sh, Windows: "
-             "scripts\\stop.ps1) or use the UI.")
+             "scripts\\stop.ps1)" + (" or send POST /api/zone/train to the running server (there is no "
+                                      "zone-training form in the UI)." if "zone" in action else " or use the UI."))
         return False
     return True
 

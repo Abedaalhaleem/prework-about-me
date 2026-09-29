@@ -139,7 +139,9 @@ class DetectionConfig(_Cfg):
     min_quiet_hold_s: float = Field(default=3.0, ge=0)
     baseline_min_duration_s: float = Field(default=60.0, gt=0)
     baseline_min_windows: int = Field(default=30, ge=5)
-    # Detections are cleared (state -> SENSOR_OFFLINE) once data is this stale.
+    # A motion latch (and a result whose processing stalled) is cleared once the
+    # newest data/result is this old. SENSOR_OFFLINE itself comes from
+    # acquisition.stale_after_s.
     clear_stale_after_s: float = Field(default=5.0, gt=0)
     min_quality_for_decision: Literal["GOOD", "DEGRADED"] = "DEGRADED"
     # Drift monitor: correlation between current static amplitude profile and

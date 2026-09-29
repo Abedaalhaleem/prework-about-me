@@ -215,7 +215,12 @@ def test_cli_refuses_to_change_the_data_folder_while_a_server_uses_it(tmp_path: 
                      ["zone-train", "--config", cfg, "--sessions", spec]):
             assert main(argv) == 1, argv
             err = capsys.readouterr().err
-            assert "DATA_DIR_LOCKED" in err and "Stop the server" in err and "use the UI" in err
+            assert "DATA_DIR_LOCKED" in err and "Stop the server" in err
+            if argv[0] == "zone-train":
+                # There is no zone-training form in the UI; point at the API instead.
+                assert "POST /api/zone/train" in err and "use the UI" not in err
+            else:
+                assert "use the UI" in err
         assert server.db.get_recording(rid) is not None
         assert recording_path(tmp_path / "data", rid).is_file()
         assert not (tmp_path / "data" / "exports").exists()

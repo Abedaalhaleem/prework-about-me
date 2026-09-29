@@ -2,7 +2,7 @@
  * Minimal typed fetch wrapper for the RoomSense backend.
  *
  * - JSON in/out; errors surface the HTTP status and the FastAPI `detail`.
- * - An optional bearer token (LAN mode only) is read from sessionStorage, and
+ * - An optional bearer token (needed whenever the server has one) is read from sessionStorage, and
  *   only if the user typed one into Settings. It is never logged, never put in
  *   a URL and never persisted beyond the browser session.
  * - There is no fallback/demo data: a failed request is an error the UI shows.

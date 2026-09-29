@@ -14,7 +14,8 @@
 #     rows are listed in the report but never counted.
 #   * Only COMPLETE runs count (a RUNNING or ABORTED run does not).
 #   * Runs are grouped by setup (placement + wall description + channel).
-#     The status refers to the setup of the most recent LIVE run.
+#     The status refers to the setup of the most recent eligible (counted)
+#     LIVE run.
 #   * Metrics use the any-link OR combination: MOTION if any link reports
 #     MOTION_DETECTED; NO_MOTION only if every link reports
 #     NO_MOTION_DETECTED; anything else is UNKNOWN (not decision time).

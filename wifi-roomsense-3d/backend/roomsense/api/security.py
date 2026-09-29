@@ -4,8 +4,8 @@ Rules
 -----
 * **Loopback by default.** :func:`check_bind_allowed` refuses a non-loopback
   bind unless ``server.allow_non_loopback`` is true *and* the
-  ``ROOMSENSE_API_TOKEN`` environment variable holds a token (>= 16 visible
-  ASCII chars). A variable that is set but unusable is refused on every bind
+  ``ROOMSENSE_API_TOKEN`` environment variable holds a token (>= 16 characters
+  from ``A-Z a-z 0-9 . _ ~ -``). A variable that is set but unusable is refused on every bind
   address, loopback included (the server does not start).
 * **Token on every /api request when configured.** If a token is configured
   (on any bind address), every ``/api`` HTTP request must carry
@@ -75,8 +75,8 @@ def check_bind_allowed(cfg: AppConfig, token: str | None = None) -> None:
     """Raise :class:`StartupRefused` unless the bind address is allowed.
 
     ``token`` defaults to :func:`roomsense.config.api_token` (the environment).
-    A ``ROOMSENSE_API_TOKEN`` that is set but unusable (empty, too short,
-    whitespace, control or non-ASCII characters) is refused on every bind
+    A ``ROOMSENSE_API_TOKEN`` that is set but unusable (empty, too short, or
+    characters outside ``A-Z a-z 0-9 . _ ~ -``) is refused on every bind
     address, loopback included; the message never contains the token.
     """
     if token is None:
@@ -89,13 +89,13 @@ def check_bind_allowed(cfg: AppConfig, token: str | None = None) -> None:
     if not cfg.server.allow_non_loopback:
         raise StartupRefused(
             f"refusing to bind to non-loopback address {cfg.server.host!r}: set server.allow_non_loopback = true "
-            "and ROOMSENSE_API_TOKEN (at least 16 characters) to expose RoomSense on your LAN. Never expose it "
+            "and ROOMSENSE_API_TOKEN (at least 16 characters from A-Z a-z 0-9 . _ ~ -) to expose RoomSense on your LAN. Never expose it "
             "to the internet."
         )
     if not token:
         raise StartupRefused(
             f"refusing to bind to non-loopback address {cfg.server.host!r} without an API token: set the "
-            "ROOMSENSE_API_TOKEN environment variable (at least 16 characters)."
+            "ROOMSENSE_API_TOKEN environment variable (at least 16 characters from A-Z a-z 0-9 . _ ~ -)."
         )
 
 

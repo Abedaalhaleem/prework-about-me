@@ -6,7 +6,10 @@
 # output, and it invalidates calibrations made under the old version.
 #
 # Secrets never go in this file. For LAN exposure, set the environment
-# variable ROOMSENSE_API_TOKEN (at least 16 characters) and allow_non_loopback = true.
+# variable ROOMSENSE_API_TOKEN (at least 16 characters, only A-Z a-z 0-9 . _ ~ -)
+# and allow_non_loopback = true. Once that variable is set, every /api request
+# needs the token (on loopback too), and an unusable value stops the server
+# from starting.
 
 [server]
 host = "127.0.0.1"          # loopback only by default
@@ -38,7 +41,9 @@ alignment_tolerance_s = 0.25
 # NO_RECEIVERS_CONFIGURED (replay and clearly labelled simulation still work).
 #
 # RoomSense firmware (firmware/esp32/roomsense_csi_rx) in ESP-NOW mode, with the
-# RoomSense transmitter (firmware/esp32/roomsense_csi_tx):
+# RoomSense transmitter (firmware/esp32/roomsense_csi_tx). For the same firmware in
+# router-ping mode, set transmitter_mac to your router's BSSID instead, or delete
+# that line: the host then uses the MAC filter the firmware reports in RSHELLO.
 # [[acquisition.receivers]]
 # receiver_id = "rx1"
 # port = "/dev/ttyUSB0"                 # SET YOUR PORT. macOS: /dev/cu.usbserial-XXXX  Windows: COM5

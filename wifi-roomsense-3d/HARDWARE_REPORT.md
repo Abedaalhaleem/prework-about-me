@@ -28,9 +28,8 @@ The inspection is read-only:
 * MAC addresses, SSIDs/BSSIDs, adapter GUIDs, USB serial numbers and your home
   directory are redacted unless you pass `--include-identifiers`. The hostname
   and user name are never collected.
-* The report file stays on your computer. If your checkout's `.gitignore`
-  does not list `HARDWARE_REPORT.local.md`, take care not to commit it by
-  accident.
+* The report file stays on your computer. The repository's `.gitignore` lists
+  `HARDWARE_REPORT.local.md` (and `*.local.md`), so git does not pick it up.
 
 Other options: `--json` (machine-readable output), and no `--write` to print
 the report to the terminal. The running app serves the same inspection at
@@ -43,9 +42,12 @@ the report to the terminal. The running app serves the same inspection at
 This is the exact output of `inspect_host()` from one run of
 `uv run python ../scripts/inspect_hardware.py --json` in the build container
 at 2026-09-29T02:51:40Z (identifiers redacted). The keys below are copied
-unchanged. Left out are `scope`, `pc_csi_research_paths` and `recommended`
-(static text, see sections 3 and 5), `commands_run` (summarised below), and
-the assessment's `reasons` and `next_steps` (prose in the Markdown report).
+unchanged. Left out are `format` and `generator` (fixed identifiers), `scope`,
+`pc_csi_research_paths` and `recommended` (static text, see sections 3 and 5),
+`commands_run` (summarised below), `errors` (an empty list), and the
+assessment's `reasons` and `next_steps` (prose in the Markdown report). A re-run
+in the same container at 2026-09-29T05:36:01Z, with the current `hardware.py`,
+gave the same values apart from the timestamp.
 
 ```json
 {
@@ -241,10 +243,10 @@ their output, and does not recommend them without your explicit approval.
 | Transmitter firmware | `firmware/esp32/roomsense_csi_tx` | ESP-NOW mode only. Broadcasts the 12-byte `RSTX` payload on a fixed channel (default 11) at a fixed rate (default 25 Hz). Needs only power once flashed. |
 | SDK | **ESP-IDF v5.5.5, exactly** | See "Why v5.5.5" below. `firmware/esp32/tools/check_idf_env.sh` checks the version. RoomSense never installs ESP-IDF. |
 | Board | ESP32-S3-DevKitC-1U-N8R8 (primary) | Section 5 and `docs/PARTS_LIST.md` |
-| USB-UART driver | Usually none to install | ESP-IDF's serial guide says the bridge drivers "should be bundled with an operating system and automatically installed". On Linux the common bridges are handled by drivers included with the kernel. If a port does not appear, identify the bridge chip on your board and follow the ESP-IDF serial-connection guide. Installing a driver is your decision. |
+| USB-UART driver | Usually none to install | ESP-IDF's serial guide says that "under normal circumstances" the bridge drivers "should be bundled with an operating system and automatically installed", and links CP210x and FTDI drivers for reference. The S3 guide does not name the board's bridge chip. If a port does not appear, identify the bridge chip on your board and follow the ESP-IDF serial-connection guide. Installing a driver is your decision. |
 | Linux serial permission | Membership of the `dialout` group (`uucp` on Arch) | ESP-IDF's guide: `sudo usermod -a -G dialout $USER`, then log in again. This is a **privileged change that needs your approval**. RoomSense never runs sudo. |
 | Serial settings | **921600 baud** | Firmware `sdkconfig.defaults` (`CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600`, UART console). The host default is `baud = 921600` in `ReceiverConfig`. RSHELLO reports the baud. The S3 board's bridge is rated "up to 3 Mbps". |
-| Which USB port | The board's **USB-to-UART** port | The firmware prints on the UART console, not on the chip's native USB port. |
+| Which USB port | The board's **USB-to-UART** port | The firmware's primary console is UART0 at 921600 baud, which reaches the computer through the USB-to-UART bridge. ESP-IDF v5.5.5 also mirrors console output to the chip's native USB-Serial-JTAG port by default (`CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG`), but RoomSense reads the UART port. See `firmware/esp32/README.md`, "Serial settings". |
 | USB cable | **Data-capable** USB 2.0 Standard-A to Micro-B (S3 board) | The S3 guide warns that charge-only cables "do not provide the needed data lines". |
 | Port name | Entered explicitly in `configs/roomsense.toml` | For example `/dev/ttyUSB0`, `/dev/cu.usbserial-…` or `COM5`. RoomSense never guesses ports. |
 
@@ -362,12 +364,12 @@ Nothing in this list can be done or confirmed from the build container.
 
 The four evidence levels are kept separate. A "yes" needs the named evidence.
 `configs/verification_evidence.json` is authoritative for the capabilities.
-The values below match it as of 2026-09-29, after the zone tests were added.
+The values below match it (checked 2026-09-29).
 
 | Item | Software-tested | Firmware-compiled | Hardware-tested | Through-wall-validated |
 |---|---|---|---|---|
 | Hardware inspection (`roomsense/hardware.py`, `scripts/inspect_hardware.py`) | **yes**: `backend/tests/test_hardware.py`, 62 passed, 0 failed, run in the build container. Covers fake port lists and simulated Linux/macOS/Windows command output. | n/a | **NO**: never run with a real board attached | n/a |
-| Firmware (`firmware/esp32`) | Host unit tests of the portable core only (see `firmware/esp32/README.md`) | **NO**: ESP-IDF is not installed in the build container | **NO** | **NO** |
+| Firmware (`firmware/esp32`) | Host unit tests of the portable core only, plus compile-only checks of that core and a header-level syntax check of the apps (see `firmware/esp32/README.md`) | **NO**: ESP-IDF is not installed in the build container | **NO** | **NO** |
 | A: acquisition | yes (synthetic data and upstream fixtures only) | **NO** | **NO** | **NO** |
 | B: motion detection | yes (synthetic data only) | **NO** | **NO** | **NO** |
 | C: zone estimation | yes (synthetic sessions only; tests also prove synthetic data can never enable it) | **NO** | **NO** | **NO** |

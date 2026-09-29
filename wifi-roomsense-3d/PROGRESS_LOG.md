@@ -24,7 +24,7 @@ Wi-Fi hardware).
 
 * **Environment inspection (executed).**
   * Ubuntu 24.04, 4 vCPU Xeon under KVM, Python 3.11.15, Node 22.22.2.
-  * There is no USB bus, no serial devices, and no wireless interface (`/sys/class/net`: eth0 virtio, ifb0, ifb1, lo).
+  * There is no USB bus, no USB serial device (only a legacy `/dev/ttyS0` UART with no USB ID), and no wireless interface (`/sys/class/net`: eth0 virtio, ifb0, ifb1, lo).
   * docs.espressif.com and arxiv.org are blocked by the egress proxy. GitHub over git works.
 * **Upstream references pinned (executed `git clone`/`ls-remote`).**
   * espressif/esp-csi `8633d67152db2808f141cc1595970aa9cf406045` (2026-04-22).
@@ -79,7 +79,7 @@ Wi-Fi hardware).
 
 | Check | Result |
 |---|---|
-| Backend `uv run pytest -q` | **882 passed** (synthetic data and upstream fixtures only) |
+| Backend `uv run pytest -q` | **884 passed** (synthetic data and upstream fixtures only) |
 | Frontend `npm run typecheck && npm test && npm run build` | **124 tests passed**, typecheck and build OK |
 | Firmware core `make -C firmware/esp32/host_tests test` | **27/27 tests, 347 checks** |
 | Firmware compiled for an ESP32 target | **Not done.** The toolchain could not be downloaded here. |
@@ -106,3 +106,14 @@ Wi-Fi hardware).
 3. Add the receiver to `configs/roomsense.toml`, start **Live**, and confirm RSHELLO, the measured rate and the documented layout on the Dashboard.
 4. In the same room, record a quiet baseline and do a walk test.
 5. Only then move to a through-wall layout (`docs/PLACEMENT.md`) and run protocol S1–S6 (`VALIDATION_REPORT.md`).
+
+### Late fixes (2026-09-29, after the docs-versus-code review)
+
+* A reviewer checked every document against the code and fixed documentation errors (see the git history). It flagged small code issues, which are now fixed:
+  * the Settings page told users to leave the token empty on 127.0.0.1, which gave 401s when the server had a token;
+  * log clipping cut off the end of tracebacks, which hid the `DATA_DIR_LOCKED` line;
+  * the CLI lock message pointed to a zone-training UI that does not exist;
+  * "serving on" was printed before the port was bound;
+  * token-charset wording and one config comment were wrong;
+  * the protocol text promised a baseline "for the whole series", but baselines are per session.
+* Comments in both criteria files were corrected **before any validation or zone data existed**, and **no threshold changed**. The zone criteria comment now says `criteria_version` is the first 16 hex digits of the SHA-256. The through-wall comment now says the status uses the most recent *eligible* LIVE run. Because criteria versions hash the whole file, the through-wall `criteria_version` changed from `e76147a9ab732095` to `059548fab1041092`.

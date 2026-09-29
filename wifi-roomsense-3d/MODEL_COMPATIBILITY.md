@@ -38,8 +38,8 @@ The gate's exact-match requirements rule out all three.
 
 ## 2. What RoomSense hardware provides
 
-Declared by this project (`docs/ARCHITECTURE.md`, `roomsense/csi_layouts.py`). These
-values are not measured by this document.
+Declared by this project (`docs/ARCHITECTURE.md`, `backend/roomsense/csi_layouts.py`).
+These values are not measured by this document.
 
 | Property | Value |
 |---|---|
@@ -48,7 +48,7 @@ values are not measured by this document.
 | CSI segment | LLTF, 64 positions, **52 occupied subcarriers** (k = −26…26 without DC) with `lltf_only` |
 | Values | int8 imaginary/real pairs; the pipeline uses **amplitude only** (`processing.use_phase = false`) |
 | Phase | **Not available.** Separate boards share no RF clock, so there is no phase synchronisation, and the pipeline does not process phase. |
-| Packet rate | Configured 25–100 Hz (default 25 Hz). The gate compares against the **measured** rate. |
+| Packet rate | Configurable 1–100 Hz in the firmware (`RS_RATE_HZ`, default 25 Hz). The gate compares against the **measured** rate. |
 | Links | As many as the user wires up. Each one is an independent 1×1 link. |
 
 `runtime_hardware_profile()` in `gate.py` converts a frame's `layout_id` into these
@@ -290,7 +290,7 @@ Ids refer to `configs/pose_requirements.json` and `gate.py`.
 | R02 | No model is installed (`installed: false`). |
 | R03, R05, R06 | No weights exist with a known licence, a safe format and a hash. No inference runtime is shipped. |
 | R07–R12 | Every model reviewed differs in at least one of: CSI source and packet format, antennas per receiver (3), number of synchronised links (2–9), or subcarrier count (30, 56 or 114 instead of 52). |
-| R13 | The peer-reviewed setups sample at 100 Hz (DensePose From WiFi) or 300 packets/s (Person-in-WiFi 3D). RoomSense is configured for 25–100 Hz. A model's rate must match the measured rate within its tolerance. |
+| R13 | The peer-reviewed setups sample at 100 Hz (DensePose From WiFi) or 300 packets/s (Person-in-WiFi 3D). The RoomSense firmware can be configured for 1–100 Hz (default 25 Hz). A model's rate must match the measured rate within its tolerance. |
 | R14 | DensePose From WiFi and Person-in-WiFi 3D require phase that is sanitised across antennas. RoomSense has no usable phase. |
 | R15 | No reviewed evaluation separates test data by session, person **and** day. |
 | R16 | Nothing has been measured with the user's boards in the user's room. |
@@ -317,7 +317,7 @@ this release. Every step is local.
    runtime. Keep camera footage local. Extract keypoints and delete the footage when it
    is no longer needed or when a participant asks. Label spaces the user controls only.
 3. **Synchronisation.** Timestamp CSI and video on one host clock. Fit each board's
-   clock (RoomSense `acquisition/alignment.py` does this), report the residual, and drop
+   clock (`backend/roomsense/acquisition/alignment.py` does this), report the residual, and drop
    pairs whose alignment is uncertain.
 4. **Dataset splits.** Split by **session, person and day**. The test set must contain
    people and days not seen in training, plus ideally a changed room layout. Leave a gap
@@ -339,7 +339,7 @@ this release. Every step is local.
    A reviewed code change must also add an inference runtime to
    `AVAILABLE_INFERENCE_BACKENDS`; a manifest alone can never enable capability D. Even
    then, outputs are labelled EXPERIMENTAL and go to a research panel only
-   (`interface.py`).
+   (`backend/roomsense/inference/pose/interface.py`).
 
 ## 8. What could not be verified here
 

@@ -17,8 +17,8 @@ export function SettingsPage() {
   return (
     <div className="page">
       <Card
-        title="API token (LAN mode only)"
-        subtitle="Only needed when the backend is bound to a non-loopback address with ROOMSENSE_API_TOKEN set. On 127.0.0.1 leave it empty."
+        title="API token"
+        subtitle="Needed whenever the server was started with ROOMSENSE_API_TOKEN set (always the case in LAN mode, and then on 127.0.0.1 too). If the server runs without a token, leave this empty."
       >
         <div className="stack">
           <Notice kind="info">
@@ -27,7 +27,7 @@ export function SettingsPage() {
             URL. Never expose RoomSense to the internet.
           </Notice>
           <p>
-            Current: <strong>{hasToken ? 'a token is set for this session' : 'no token (loopback mode)'}</strong>
+            Current: <strong>{hasToken ? 'a token is set for this session' : 'no token'}</strong>
           </p>
           <label className="field">
             New token

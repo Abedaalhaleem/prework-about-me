@@ -234,13 +234,14 @@ Access rules (`roomsense/api/security.py`, `roomsense/api/app.py`):
   bind address), every `/api/*` request must send `Authorization: Bearer <token>`
   (401 `UNAUTHORIZED` otherwise) and the WebSocket must present it (see "WebSocket auth"
   below). A `ROOMSENSE_API_TOKEN` that is **set but unusable** (empty, whitespace only,
-  shorter than 16 characters, or containing whitespace, control or non-ASCII characters)
+  shorter than 16 characters, or containing any character outside `A-Z a-z 0-9 . _ ~ -`,
+  which covers whitespace, control and non-ASCII characters; `config.api_token_problem`)
   makes the server refuse to start on **every** bind address, loopback included
   (`StartupRefused`; `roomsense serve` exits with code 2). The token is never printed or
   logged, and never read from query strings.
 * **Host header (DNS rebinding).** While bound to loopback, a request whose `Host` is not
-  a loopback name (`127.0.0.1`, `localhost`, `::1`, with any port) gets **421**
-  `HOST_NOT_ALLOWED` (WebSocket: close 1008).
+  a loopback name (`localhost`, or a loopback IP address such as `127.0.0.1` or `::1`,
+  with any port) gets **421** `HOST_NOT_ALLOWED` (WebSocket: close 1008).
 * **Origin.** WebSocket handshakes and `POST`/`PUT`/`PATCH`/`DELETE` requests that carry a
   foreign `Origin` are refused: **403** `ORIGIN_NOT_ALLOWED` (WebSocket: close **1008**).
   Allowed origins are the server itself (the `Origin` authority equals the `Host` header,
@@ -348,9 +349,13 @@ def data_dir_lock(data_dir: Path) -> Iterator[Path]   # the same lock, for tools
   (default `data/roomsense.sqlite3`); recordings are `data/recordings/<id>.jsonl.gz`,
   exports `data/exports/`, zone models `data/models/`. One process per data folder: the
   runtime holds an exclusive lock on `data/.roomsense.lock` for its lifetime. A second
-  runtime (a second server, `roomsense capture`) is refused with **409 `DATA_DIR_LOCKED`**;
-  `roomsense recordings delete|export` and `roomsense zone-train` take the same lock and
-  refuse while a server runs ("stop the server or use the UI", exit code 1).
+  runtime is refused with `OperationRefused("DATA_DIR_LOCKED", ..., 409)` in its
+  constructor, so no HTTP response is involved: a second server fails during startup
+  (uvicorn logs "Application startup failed"), and `roomsense capture` prints
+  `DATA_DIR_LOCKED: ...` and exits with code 1. `roomsense recordings delete|export` and
+  `roomsense zone-train` take the same lock and refuse while a server runs ("stop the
+  server or use the UI", exit code 1; for zone training the running server offers
+  `POST /api/zone/train`, not a UI form).
   `roomsense recordings list` and `validate-report` only read and do not need it.
 * **Crash recovery.** On `start()`, validation runs left `RUNNING` by a crashed process become
   `ABORTED` with zero duration (they never count as evidence) and sessions without an end

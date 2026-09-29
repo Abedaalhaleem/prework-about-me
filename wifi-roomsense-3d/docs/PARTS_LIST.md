@@ -125,7 +125,7 @@ recommendation, for these reasons:
 
 | What | Detail | Status |
 |---|---|---|
-| Band | 2.4 GHz. The RoomSense ESP-NOW mode uses channels 1–13 (`RS_CHANNEL`, `firmware/esp32/*/main/Kconfig.projbuild`), and ESP-IDF says ESP-NOW is "only supported on 2.4 GHz band" (`wifi.rst` line 72). | Verified in firmware config and IDF docs |
+| Band | 2.4 GHz. The RoomSense ESP-NOW mode uses channels 1–13 (`RS_CHANNEL`, `firmware/esp32/*/main/Kconfig.projbuild`), which are 2.4 GHz channels. The ESP32-S3 feature list in the pinned `wifi.rst` (the `esp32 or esp32s2 or esp32c3 or esp32s3` block from line 17) names IEEE 802.11b, 802.11g and 802.11n and does not mention 5 GHz. | Checked in the firmware config and the IDF docs. The antenna's own band: **verify before buying** |
 | Connector | Must match the external antenna connector of ESP32-S3-WROOM-1U. The dev-kit guide does not name its type. esp-csi's README calls external antennas "IPEX", but that is a general note, not a statement about this module. | **Verify before buying** in the ESP32-S3-WROOM-1/1U datasheet |
 | Type and gain | No specific antenna model has been checked by this project. Use the **same antenna model on every board**. Module radio approvals are often tied to particular antenna types and gains, so check what the module datasheet or certification allows before using a different antenna. | **Verify before buying** |
 | Quantity | One per -1U board | — |

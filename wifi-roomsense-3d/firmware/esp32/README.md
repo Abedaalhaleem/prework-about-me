@@ -11,8 +11,11 @@ This directory holds the device side of WiFi RoomSense 3D:
 | `tools/` | `check_idf_env.sh` (pins ESP-IDF v5.5.5) and `header_syntax_check.sh` (a header-level check, not a build). |
 
 The firmware covers **capability A only (CSI acquisition and diagnostics)**. It
-does not detect motion, locate people or estimate pose. The host does any of
-that, and only with the evidence gates described in `docs/ARCHITECTURE.md`.
+does not detect motion, locate people or estimate pose. On the host, motion
+detection (capability B) is a heuristic per link; zone estimation (C) stays
+DISABLED unless its evidence gates pass, and pose (D) is DISABLED because no
+compatible model with usable weights was found (`docs/ARCHITECTURE.md`,
+`MODEL_COMPATIBILITY.md`).
 
 ## STATUS (read this first)
 
@@ -296,8 +299,8 @@ make -C firmware/esp32/host_tests strict cross    # extra warnings; rv32imc clan
 ## Privacy and safety
 
 Use this only in spaces you control, and only with the consent of the people
-present. The firmware exports CSI only from the one configured transmitter or
-AP, sends everything over the local USB serial link, has no network uploads,
-and stores no credentials in the repository. Motion sensing through a wall is
-experimental. A 3-D view on the host is a visualisation, not proof of 3-D
-reconstruction.
+present. The firmware is written to export CSI only from the one configured
+transmitter or AP, to send everything over the local USB serial link, and to
+make no network uploads (not verified on hardware); it stores no credentials in
+the repository. Motion sensing through a wall is unverified. The 3-D view on the
+host shows the room model you entered; it is not a 3-D reconstruction.
