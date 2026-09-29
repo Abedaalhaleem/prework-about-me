@@ -1,0 +1,88 @@
+{
+  "schema": "roomsense-verification-evidence-v1",
+  "reviewed_on": "2026-09-29",
+  "policy": "Evidence levels are set to true only when the evidence exists. software_tested means automated tests for the capability's software path exist in backend/tests and run on synthetic data or upstream documentation fixtures; it says nothing about sensing accuracy. firmware_compiled requires a build with the pinned ESP-IDF for a real target. hardware_tested requires a recorded run on real ESP32 boards. through_wall_validated requires the through-wall validation protocol (roomsense/validation/protocol.py) to have been completed behind a real wall with a report. Runtime state never upgrades these flags; only an edit to this file, backed by the named evidence, does.",
+  "capabilities": {
+    "A_ACQUISITION": {
+      "software_tested": true,
+      "firmware_compiled": false,
+      "hardware_tested": false,
+      "through_wall_validated": false,
+      "software_test_globs": [
+        "test_acq_*.py",
+        "test_acquisition*.py",
+        "test_parser*.py",
+        "test_rollover*.py",
+        "test_serial*.py",
+        "test_replay*.py",
+        "test_synthetic*.py"
+      ],
+      "notes": [
+        "Parser, counter/timestamp unwrapping, frame building and source handling are covered by automated tests on upstream esp-csi documentation fixtures and synthetic frames only."
+      ],
+      "would_change": {
+        "software_tested": "Backed by the test files matching software_test_globs; set to false if they are removed or no longer pass.",
+        "firmware_compiled": "Set to true only after firmware/esp32 is built with the pinned ESP-IDF for a real target and the build log is kept.",
+        "hardware_tested": "Set to true only after LIVE acquisition from real ESP32 boards is recorded (hello records, frame rates, drop counters) and the recording is kept.",
+        "through_wall_validated": "Not applicable to acquisition on its own; stays false."
+      }
+    },
+    "B_MOTION": {
+      "software_tested": true,
+      "firmware_compiled": false,
+      "hardware_tested": false,
+      "through_wall_validated": false,
+      "software_test_globs": [
+        "test_proc_*.py",
+        "test_processing*.py",
+        "test_detector*.py",
+        "test_baseline*.py"
+      ],
+      "notes": [
+        "Windowing, quality, features, baseline and hysteresis logic are covered by automated tests on synthetic data. Passing tests show the code paths run, not that motion is detected reliably in a real room."
+      ],
+      "would_change": {
+        "software_tested": "Backed by the test files matching software_test_globs; set to false if they are removed or no longer pass.",
+        "firmware_compiled": "Set to true only when the firmware that produces the measured CSI has been compiled with the pinned ESP-IDF.",
+        "hardware_tested": "Set to true only after motion detection has been run on real boards with labelled walk and empty-room sessions and the report (false alarms per hour, event recall) is kept.",
+        "through_wall_validated": "Set to true only after the through-wall protocol has been completed behind a real wall and the report shows the target room is distinguishable from the adjacent space."
+      }
+    },
+    "C_ZONE": {
+      "software_tested": false,
+      "firmware_compiled": false,
+      "hardware_tested": false,
+      "through_wall_validated": false,
+      "software_test_globs": [
+        "test_zone*.py"
+      ],
+      "notes": [
+        "No automated tests matching software_test_globs existed when this file was reviewed (2026-09-29), so software_tested is false. No zone model has been trained or validated on real measurements."
+      ],
+      "would_change": {
+        "software_tested": "Set to true once tests matching software_test_globs (tests/test_zone*.py) exist and pass on synthetic data; tests/test_capabilities.py checks that every true claim names existing test files.",
+        "firmware_compiled": "Set to true only when the firmware that produces the measured CSI has been compiled with the pinned ESP-IDF.",
+        "hardware_tested": "Set to true only after a zone model has passed configs/zone_enablement.toml on held-out sessions recorded with real boards, with the evaluation report kept.",
+        "through_wall_validated": "Set to true only after that model has also been evaluated behind a real wall per the validation protocol."
+      }
+    },
+    "D_POSE": {
+      "software_tested": true,
+      "firmware_compiled": false,
+      "hardware_tested": false,
+      "through_wall_validated": false,
+      "software_test_globs": [
+        "test_pose_*.py"
+      ],
+      "notes": [
+        "Only the gate is tested: it stays closed with no model installed, rejects mismatched hardware, wrong hashes, unsafe formats and unvalidated models. No pose model exists for this hardware (docs/MODEL_COMPATIBILITY.md)."
+      ],
+      "would_change": {
+        "software_tested": "Backed by backend/tests/test_pose_*.py, which test the gate and the experimental-output interface only.",
+        "firmware_compiled": "Not applicable while no pose model exists; stays false.",
+        "hardware_tested": "Set to true only after a compatible model with safe-format weights has been evaluated on real boards on an independent (session/person/day) test set, with the report kept.",
+        "through_wall_validated": "Set to true only after such a model has been evaluated behind a real wall; stays false."
+      }
+    }
+  }
+}

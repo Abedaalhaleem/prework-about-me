@@ -69,6 +69,7 @@ __all__ = [
     "ZoneState",
     "ZonePrediction",
     "PoseStatus",
+    "UnsupportedCapability",
     "SystemStatus",
     "canonical_hash",
 ]
@@ -660,6 +661,14 @@ class PoseStatus(_Model):
 # ---------------------------------------------------------------------------
 
 
+class UnsupportedCapability(_Model):
+    """A claim this system explicitly does NOT make (shown in the UI)."""
+
+    id: str
+    claim: str
+    reason: str
+
+
 class SystemStatus(_Model):
     server_time_unix_ns: int
     source_mode: SourceMode | None  # None when no source is selected
@@ -687,4 +696,5 @@ class SystemStatus(_Model):
         "Not a people counter, not identification, not continuous tracking."
     )
     stale_clear_timeout_s: float = 5.0
+    unsupported_capabilities: list[UnsupportedCapability] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)

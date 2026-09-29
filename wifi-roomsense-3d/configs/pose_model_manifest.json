@@ -1,0 +1,7 @@
+{
+  "schema": "roomsense-pose-manifest-v1",
+  "installed": false,
+  "reason": "No pose model with usable, independently validated weights exists for this project's hardware (single-antenna ESP32 boards, one link per board, 64-position LLTF CSI with 52 occupied subcarriers, amplitude only, no RF phase synchronisation, no antenna array). The peer-reviewed Wi-Fi pose systems reviewed were trained on Intel 5300 or Atheros NICs with 3 receive antennas per receiver, two of them using phase sanitised across antennas, and no released weights were found for any of them; the community ESP32 attempts reviewed either need 2 to 9 synchronised links or, in the one case with committed safe-format weights (RuView pose_v1, 56-subcarrier input), self-report PCK@20 of about 3% on a split of a single recording; none has independent validation. Capability D therefore stays DISABLED.",
+  "research": "docs/MODEL_COMPATIBILITY.md",
+  "reviewed_on": "2026-09-29"
+}

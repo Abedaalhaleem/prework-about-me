@@ -9,12 +9,16 @@ a ``type`` key:
   "parser_version": .., "recording_id": .., "session_id": .., "source_mode": ..,
   "created_at_unix_ns": .., "label": .., "scenario": .., "link_ids": [..],
   "consent_id": .., "config_version": .., "notes": ..}`` — always the first line.
+  The recorder also writes ``original_source_mode`` (LIVE/REPLAY/SIMULATION or
+  null = unknown), ``synthetic`` (bool), ``consent_statement_version`` and
+  ``limits`` ({max_bytes, max_seconds}).
 * ``{"type": "frame", "frame": <CsiFrame.to_record()>}``
 * ``{"type": "event", "event": {"kind": .., "link_id": .., "receiver_id": ..,
   "detail": .., "host_monotonic_ns": .., "host_unix_ns": ..}}`` — link events
   such as DISCONNECTED, so replays preserve gaps and their causes.
 * ``{"type": "footer", "ended_at_unix_ns": .., "status": .., "frames": ..,
-  "bytes_uncompressed": .., "reason": ..}`` — present when closed cleanly. A
+  "bytes_uncompressed": .., "reason": .., "synthetic": .., "duration_s": ..,
+  "link_ids_seen": [..], "frames_rejected": .., "events": ..}`` — present when closed cleanly. A
   missing footer means the recording was interrupted (still replayable).
 
 Readers enforce a maximum line length and reject unknown formats or

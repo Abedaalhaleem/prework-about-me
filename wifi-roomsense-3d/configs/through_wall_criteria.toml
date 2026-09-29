@@ -1,0 +1,74 @@
+# Through-wall motion validation criteria (WiFi RoomSense 3D)
+#
+# These criteria were written on 2026-09-29, BEFORE any through-wall data
+# existed. They must NOT be lowered or relaxed after looking at results.
+# If a setup fails, report the failure; do not move the goalposts.
+#
+# criteria_version = the first 16 hex digits of the SHA-256 of this file's
+# exact bytes. It is recorded in every validation report, so any edit to
+# this file (even a comment) produces a new, visibly different version.
+#
+# Evidence rules (enforced in roomsense/validation/report.py):
+#   * Only LIVE sessions count. SIMULATION runs, REPLAY runs, runs whose
+#     recording is synthetic, and runs whose activity log contains non-LIVE
+#     rows are listed in the report but never counted.
+#   * Only COMPLETE runs count (a RUNNING or ABORTED run does not).
+#   * Runs are grouped by setup (placement + wall description + channel).
+#     The status refers to the setup of the most recent LIVE run.
+#   * Metrics use the any-link OR combination: MOTION if any link reports
+#     MOTION_DETECTED; NO_MOTION only if every link reports
+#     NO_MOTION_DETECTED; anything else is UNKNOWN (not decision time).
+#
+# Status:
+#   NOT_DISTINGUISHABLE  if S3 has >= s3_outside.min_events events and its
+#                        detection fraction >= s3_outside.not_distinguishable_detection_fraction
+#   VALIDATED            if every S1, S2 and S3 requirement below is met
+#   UNVERIFIED           otherwise (with the list of unmet requirements)
+
+[meta]
+name = "through-wall-motion-v1"
+written = "2026-09-29"
+confidence_level = 0.95
+
+[s1_empty]
+# Minimum total decision time (hours) across S1 runs before a false-alarm
+# rate is considered estimated at all.
+min_observation_hours = 2.0
+# Upper bound of the exact Poisson 95% CI of false alarms per hour.
+# Consequence (arithmetic, not a relaxation): with zero false alarms the
+# upper bound is 3.689 / hours, so passing needs at least ~3.7 h of empty
+# decision time; each false alarm raises the hours needed (1 -> ~5.6 h,
+# 2 -> ~7.2 h). min_observation_hours is only the floor below which no
+# false-alarm estimate is reported as meaningful.
+max_false_alarms_per_hour_upper95 = 1.0
+
+[s2_moving]
+# Minimum number of labelled MOVING events across S2 runs.
+min_events = 20
+# Lower bound of the Wilson 95% CI of event recall.
+min_recall_lower95 = 0.8
+
+[s3_outside]
+# Minimum number of labelled OUTSIDE_MOTION events before S3 is evaluated.
+min_events = 10
+# Outside-room motion near the sensors detected at least this often means
+# detections cannot be attributed to the target room.
+not_distinguishable_detection_fraction = 0.5
+
+[metrics]
+# An event counts as detected if a MOTION_DETECTED onset occurs between the
+# event start and (event end + detection_tolerance_s). Latency is measured
+# from the event start to that onset.
+detection_tolerance_s = 3.0
+# A link's last decision is held for at most this long. After that, with no
+# new activity-log row, the link counts as unobserved (NO_DATA).
+max_sample_hold_s = 5.0
+# The first seconds of a STILL interval are skipped (the detector's quiet
+# hold keeps MOTION for a while after walking stops).
+still_settle_s = 5.0
+# Grace period at the start of a DISCONNECT interval before a NO_MOTION
+# decision counts as a false all-clear (staleness detection needs time).
+disconnect_grace_s = 5.0
+# Fewer events than this in any event-based metric triggers an
+# "insufficient events" warning (independent of the pass criteria).
+min_events_warning = 10

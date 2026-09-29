@@ -1,0 +1,115 @@
+{
+  "schema": "roomsense-pose-requirements-v1",
+  "summary": "Requirements a pose research model must satisfy before capability D can be enabled. Every id is checked by backend/roomsense/inference/pose/gate.py. In this release no model is installed and no inference runtime is shipped, so capability D is DISABLED.",
+  "research": "docs/MODEL_COMPATIBILITY.md",
+  "requirements": [
+    {
+      "id": "R01_MANIFEST_VALID",
+      "title": "Valid manifest",
+      "description": "configs/pose_model_manifest.json exists, is at most 256 KiB of UTF-8 JSON with no duplicate keys or non-finite numbers, uses schema roomsense-pose-manifest-v1 and passes strict validation (no unknown fields, no type coercion)."
+    },
+    {
+      "id": "R02_MODEL_INSTALLED",
+      "title": "A model is installed",
+      "description": "The manifest says installed: true and names model_id, source_url, source_commit, license, weights_path, weights_format, weights_sha256, input requirements, output keypoints, coordinate frame, training domain, validation evidence and compute needs."
+    },
+    {
+      "id": "R03_LICENSE",
+      "title": "Known licence",
+      "description": "A licence is named for the weights and it is not 'unknown' (or none/unlicensed/NOASSERTION/TBD). Code licences do not automatically cover weights or datasets; the licence of the weights themselves must be stated."
+    },
+    {
+      "id": "R04_WEIGHTS_INSIDE_DATA_DIR",
+      "title": "Weights stored locally inside the app data directory",
+      "description": "weights_path resolves (after following symlinks) inside the configured data directory. Nothing is downloaded at runtime."
+    },
+    {
+      "id": "R05_WEIGHTS_SHA256",
+      "title": "Weights integrity",
+      "description": "The weights file exists and its SHA-256 equals weights_sha256 in the manifest."
+    },
+    {
+      "id": "R06_SAFE_WEIGHTS_FORMAT_AND_RUNTIME",
+      "title": "Safe weights format with a shipped runtime",
+      "description": "Weights are safetensors or ONNX (never pickle-based formats such as .pt/.pth/.pkl/.joblib/.ckpt, which can execute code when loaded) and this build includes a reviewed inference runtime for that format. This release ships none."
+    },
+    {
+      "id": "R07_HW_CSI_SOURCE",
+      "title": "Same CSI source as training",
+      "description": "The runtime CSI source (chip family and LTF segment, e.g. esp32-classic-lltf) equals the one the model was trained on. CSI from different NICs is not interchangeable (different subcarrier grids, AGC, scaling and phase behaviour)."
+    },
+    {
+      "id": "R08_HW_PACKET_FORMAT",
+      "title": "Same record format",
+      "description": "The runtime record format (e.g. roomsense-rscsi-v1) equals the one the model's preprocessing expects."
+    },
+    {
+      "id": "R09_HW_TX_ANTENNAS",
+      "title": "Transmit antenna count",
+      "description": "Transmit antennas per transmitter equal the trained configuration."
+    },
+    {
+      "id": "R10_HW_RX_ANTENNAS",
+      "title": "Receive antenna count",
+      "description": "Receive antennas per receiver equal the trained configuration. Multi-antenna models cannot be fed single-antenna CSI by padding or copying channels."
+    },
+    {
+      "id": "R11_HW_LINKS",
+      "title": "Number of synchronised links",
+      "description": "The number of simultaneously captured transmitter-to-receiver links equals the trained configuration."
+    },
+    {
+      "id": "R12_HW_SUBCARRIERS",
+      "title": "Subcarrier count",
+      "description": "The number of valid subcarriers per packet equals the trained configuration. Frames are never padded, truncated or interpolated to force a shape."
+    },
+    {
+      "id": "R13_HW_SAMPLE_RATE",
+      "title": "Packet rate",
+      "description": "The measured (not configured) packet rate is within the manifest's tolerance of the trained rate."
+    },
+    {
+      "id": "R14_HW_PHASE",
+      "title": "Phase availability",
+      "description": "If the model needs calibrated CSI phase, the runtime provides it. Separate ESP32 boards share no RF clock and this project does not process phase, so phase is unavailable here."
+    },
+    {
+      "id": "R15_VALIDATION_INDEPENDENT_TEST",
+      "title": "Independent test set",
+      "description": "Reported metrics come from test data that shares no recording session, person or day with the training data. Random-frame or within-clip splits do not qualify."
+    },
+    {
+      "id": "R16_VALIDATION_MEASURED_HERE",
+      "title": "Measured with this hardware in this environment",
+      "description": "The metrics were measured with the user's own boards in the user's own room and wall configuration. Numbers copied from a paper do not transfer."
+    },
+    {
+      "id": "R17_VALIDATION_REAL_DATA",
+      "title": "Real, named evaluation data",
+      "description": "The evidence names the evaluation dataset, records metrics (e.g. PCK@0.2, MPJPE) and does not rely on synthetic data."
+    }
+  ],
+  "project_hardware": {
+    "csi_source": "esp32-classic-lltf",
+    "tx_antennas_per_link": 1,
+    "rx_antennas_per_link": 1,
+    "subcarrier_positions": 64,
+    "valid_subcarriers": 52,
+    "configured_rate_hz_range": [25, 100],
+    "phase_available": false,
+    "antenna_array": false,
+    "notes": [
+      "Declared by this project (docs/ARCHITECTURE.md, roomsense/csi_layouts.py), not measured by this file.",
+      "Classic chips (ESP32/-S2/-S3/-C3) with the lltf_only configuration deliver 64 LLTF positions, of which 52 are occupied subcarriers (k = -26..26 without DC).",
+      "The rate range is the configured transmit/ping rate; the gate compares against the measured rate.",
+      "Amplitude only: processing.use_phase is false and separate boards have no shared RF clock."
+    ]
+  },
+  "missing_for_this_hardware": [
+    "No published Wi-Fi pose model found that was trained on single-antenna ESP32 LLTF amplitude CSI and released usable weights with independent evaluation.",
+    "The peer-reviewed Wi-Fi pose systems reviewed (DensePose From WiFi, Person-in-WiFi, Person-in-WiFi 3D, MM-Fi Wi-Fi modality) use Intel 5300 or Atheros NICs with 3 receive antennas per receiver, and DensePose From WiFi and Person-in-WiFi 3D use sanitised phase; this hardware has one antenna per board and no usable phase.",
+    "The community ESP32 pose projects reviewed either use 2 to 9 synchronised links (not one) or expect a 56-subcarrier input (not the 52 occupied LLTF subcarriers used here); all report only same-recording or random-split numbers, and they publish no weights, pickle-based checkpoints without a licence, or (RuView pose_v1) safetensors weights with a self-reported PCK@20 of about 3%.",
+    "No weights in a safe format (safetensors/ONNX) with a known licence exist for this hardware, and no inference runtime is shipped.",
+    "No independent, session/person/day-split evaluation measured with this project's boards in the user's room exists."
+  ]
+}

@@ -324,3 +324,31 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
   `calibration_progress()`, `is_calibrating()`, `baseline_status()`, `drift_status()`, `link_stats()`, `engine_stats()`,
   `link_ids()`, `invalidate_baselines(reason, link_ids=None)`; `convert_frame()` returns a sample or a `FrameRejection`.
 * **Offline replays:** windows follow the data timeline. Call `ProcessingEngine.step()` at least once per `hop_s` of data time.
+
+### Storage, validation and pose (as implemented)
+
+* **`Recorder.start`** also accepts `link_ids`, `config_version` and `original_source_mode`.
+  `write()` and `write_event()` return bool.
+* **Other recorder APIs:** `check_limits()`, `last_finished`, `status()`, `recover_interrupted()`,
+  `iter_recording_events(path)`.
+* **`RecordingRefused(code, detail)`** codes: `ALREADY_RECORDING`, `CONSENT_INVALID`,
+  `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `RECORDING_ACTIVE`.
+* Create one `Recorder` per data directory per process. Its constructor marks
+  interrupted recordings as ERROR.
+* **Session and recording IDs** must match `^[A-Za-z0-9_-]{1,64}$`.
+* **Validation:** `build_validation_report(db, criteria_path, *, now_ns=None, software_tested=None) -> dict`,
+  `render_markdown(report)`, `protocol_as_dict()`.
+  * START/END event labels: `MOVING`, `STILL`, `OUTSIDE_MOTION`, `DOOR`, `INTERFERENCE`,
+    `DISCONNECT`, `DEGRADED`.
+  * `activity_log` needs **one row per ActivityResult** (`Database.add_activity_result`),
+    because observation time is derived from it.
+  * Cache the report; do not rebuild it at the status push rate.
+* **Pose gate:** `evaluate_pose_gate(manifest_path, runtime_hw, *, data_dir=None, available_backends=None) -> PoseStatus`.
+  * Build `runtime_hw` with `runtime_hardware_profile(*, layout_id, packet_format, measured_rate_hz, links, phase_available=False)`.
+  * Pass `data_dir=cfg.storage.resolved_data_dir()`.
+  * Never pass `available_backends` in production.
+* **Capabilities:** `CapabilityContext(...)` and `build_capabilities(ctx)`.
+  * Load the evidence with `load_verification_evidence()`. On `EvidenceError`, pass `{}`.
+  * `UNSUPPORTED_CAPABILITIES` is exposed as `SystemStatus.unsupported_capabilities`
+    and as `GET /api/capabilities/unsupported`.
+* **Model research:** `docs/MODEL_COMPATIBILITY.md`.
