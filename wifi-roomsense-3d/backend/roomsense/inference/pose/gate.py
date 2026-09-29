@@ -30,7 +30,7 @@ R17_VALIDATION_REAL_DATA               evidence names a dataset and metrics and 
 **This release ships no pose model** (``configs/pose_model_manifest.json`` has
 ``installed: false``) and **no pose inference runtime**
 (:data:`AVAILABLE_INFERENCE_BACKENDS` is empty), so the gate is always closed.
-See ``docs/MODEL_COMPATIBILITY.md`` for the research behind that.
+See ``MODEL_COMPATIBILITY.md`` for the research behind that.
 
 Thread safety: the function is safe to call from several threads. Its only
 shared state is a small weights-hash cache guarded by a lock, so a status

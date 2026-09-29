@@ -479,7 +479,7 @@ def data_dir_lock(data_dir: Path) -> Iterator[Path]   # the same lock, for tools
   * Load the evidence with `load_verification_evidence()`. On `EvidenceError`, pass `{}`.
   * `UNSUPPORTED_CAPABILITIES` is exposed as `SystemStatus.unsupported_capabilities`
     and as `GET /api/capabilities/unsupported`.
-* **Model research:** `docs/MODEL_COMPATIBILITY.md`.
+* **Model research:** `MODEL_COMPATIBILITY.md`.
 
 ### Frontend expectations the API must honour
 

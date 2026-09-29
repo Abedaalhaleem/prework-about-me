@@ -1,7 +1,7 @@
 """Interface for an optional pose research model (capability D).
 
 Nothing here implements a pose model; this release ships none (see
-``docs/MODEL_COMPATIBILITY.md``). The interface exists so that a future,
+``MODEL_COMPATIBILITY.md``). The interface exists so that a future,
 gated model can only produce outputs that:
 
 * are always labelled ``EXPERIMENTAL``;

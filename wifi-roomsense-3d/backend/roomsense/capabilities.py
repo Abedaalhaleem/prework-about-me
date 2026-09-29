@@ -119,7 +119,7 @@ UNSUPPORTED_CAPABILITIES: list[UnsupportedCapability] = [
         "id": "ANATOMICAL_DETAIL",
         "claim": "Anatomical detail, body shape, skeletons or dense pose",
         "reason": "Pose (capability D) is disabled: no compatible model, weights or validation exist "
-        "for single-antenna ESP32 CSI (docs/MODEL_COMPATIBILITY.md).",
+        "for single-antenna ESP32 CSI (MODEL_COMPATIBILITY.md).",
     },
     {
         "id": "CONTINUOUS_TRACKING",
@@ -293,6 +293,9 @@ class CapabilityContext:
     # that holds simulated frames (SystemStatus.simulated). Such a replay must
     # never be described as recorded measurements.
     simulated: bool = False
+    # Links whose newest result is older than detection.clear_stale_after_s
+    # (processing stalled). Their results are shown as UNKNOWN, so B is not ENABLED.
+    processing_stalled_links: int = 0
 
     def __post_init__(self) -> None:
         # Accept plain strings from callers (e.g. "LIVE") but store the enums,
@@ -371,6 +374,13 @@ def _motion(ctx: CapabilityContext) -> tuple[CapabilityState, list[str]]:
             ]
         return CapabilityState.DISABLED, [*reasons, f"Source is {state.value}; no data is flowing."]
 
+    if ctx.processing_stalled_links > 0:
+        return CapabilityState.DISABLED, [
+            *reasons,
+            f"PROCESSING_STALLED: {ctx.processing_stalled_links} link result(s) are older than the stale "
+            "timeout and are shown as UNKNOWN, not as current motion decisions.",
+        ]
+
     reasons.append(_SCOPE_NOTE)
     if ctx.through_wall_status != "VALIDATED":
         reasons.append(f"Through-wall behaviour: {ctx.through_wall_status} for this setup.")
@@ -418,7 +428,7 @@ def _pose(ctx: CapabilityContext) -> tuple[CapabilityState, list[str]]:
             "only in the research panel, never in the validated live view."
         ]
     reasons = ["Disabled: no compatible pose model, weights and validation exist for this hardware "
-               "(docs/MODEL_COMPATIBILITY.md)."]
+               "(MODEL_COMPATIBILITY.md)."]
     reasons.extend(ps.missing_requirements)
     return CapabilityState.DISABLED, reasons
 

@@ -73,7 +73,9 @@ def test_setup_scripts_copy_the_example_and_check_it() -> None:
 # ---------------------------------------------------------------------------
 
 BAD_TOKENS = ["", "   ", "\t", "xq7Zk9", "0123456789abcde", " 0123456789abcdef", "0123456789abcdef\n",
-              "0123456789 abcdef", "0123456789abcdef\x01", "töken-0123456789abcdef"]
+              "0123456789 abcdef", "0123456789abcdef\x01", "töken-0123456789abcdef",
+              # visible ASCII that browsers cannot send in a WebSocket subprotocol token
+              "A-b_c.d~e+f!g#h$i%j&k'l*m^n`o|p", "abcdefghijklmnop/", "abcdefghijklmnop=="]
 
 
 @pytest.mark.parametrize("bad", BAD_TOKENS)
@@ -84,7 +86,7 @@ def test_unusable_tokens_are_named_without_revealing_them(bad: str) -> None:
 
 
 def test_usable_tokens() -> None:
-    for good in (TOKEN, "0123456789abcdef", "A-b_c.d~e+f!g#h$i%j&k'l*m^n`o|p"):
+    for good in (TOKEN, "0123456789abcdef", "A-b_c.d~e0123456789", "Zx9_Qw-7.Lm~Np3Rt"):
         assert api_token_problem(good) is None
 
 

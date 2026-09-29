@@ -1,7 +1,7 @@
 {
   "schema": "roomsense-pose-requirements-v1",
   "summary": "Requirements a pose research model must satisfy before capability D can be enabled. Every id is checked by backend/roomsense/inference/pose/gate.py. In this release no model is installed and no inference runtime is shipped, so capability D is DISABLED.",
-  "research": "docs/MODEL_COMPATIBILITY.md",
+  "research": "MODEL_COMPATIBILITY.md",
   "requirements": [
     {
       "id": "R01_MANIFEST_VALID",

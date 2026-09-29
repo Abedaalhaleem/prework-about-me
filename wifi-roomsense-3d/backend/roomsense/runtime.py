@@ -1857,6 +1857,7 @@ class AppRuntime:
             through_wall_status=through_wall,
             evidence=self._evidence,
             simulated=simulated,
+            processing_stalled_links=stalled,
         )
         capabilities: list[CapabilityStatus] = build_capabilities(ctx)
         rec = self.recorder.active

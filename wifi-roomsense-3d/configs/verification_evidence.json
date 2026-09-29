@@ -75,7 +75,7 @@
         "test_pose_*.py"
       ],
       "notes": [
-        "Only the gate is tested: it stays closed with no model installed, rejects mismatched hardware, wrong hashes, unsafe formats and unvalidated models. No pose model exists for this hardware (docs/MODEL_COMPATIBILITY.md)."
+        "Only the gate is tested: it stays closed with no model installed, rejects mismatched hardware, wrong hashes, unsafe formats and unvalidated models. No pose model exists for this hardware (MODEL_COMPATIBILITY.md)."
       ],
       "would_change": {
         "software_tested": "Backed by backend/tests/test_pose_*.py, which test the gate and the experimental-output interface only.",

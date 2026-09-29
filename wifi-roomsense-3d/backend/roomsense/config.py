@@ -14,6 +14,7 @@ the server refuses to start.
 from __future__ import annotations
 
 import ipaddress
+import re
 import os
 import tomllib
 from pathlib import Path
@@ -205,6 +206,8 @@ def load_config(path: str | os.PathLike[str] | None = None) -> AppConfig:
 
 
 API_TOKEN_MIN_CHARS = 16
+# Characters a browser can put in a WebSocket subprotocol token (RFC 6455).
+_API_TOKEN_CHARS = re.compile(r"[A-Za-z0-9._~-]+")
 
 
 class ApiTokenInvalid(ValueError):
@@ -215,17 +218,21 @@ class ApiTokenInvalid(ValueError):
 def api_token_problem(value: str) -> str | None:
     """Why ``value`` cannot be used as the API token, or ``None`` if it can.
 
-    A usable token has at least :data:`API_TOKEN_MIN_CHARS` characters, all
-    visible ASCII (no whitespace, control or non-ASCII characters): anything
-    else could never match what a client sends in ``Authorization: Bearer``
-    or in the WebSocket subprotocol. The text never contains the value.
+    A usable token has at least :data:`API_TOKEN_MIN_CHARS` characters from
+    ``A-Z a-z 0-9 . _ ~ -`` only. Browsers send the token in the WebSocket
+    subprotocol header (``bearer.<token>``), where characters such as ``/``,
+    ``=`` or ``+`` are not allowed, so any other character would make the live
+    view fail later instead of failing loudly here. The text never contains
+    the value.
     """
     if not value.strip():
         return "is set but empty"
     if any(ch.isspace() for ch in value):
         return "contains whitespace"
-    if not all("!" <= ch <= "~" for ch in value):
+    if not all(ch.isascii() and ch.isprintable() for ch in value):
         return "contains control or non-ASCII characters"
+    if not _API_TOKEN_CHARS.fullmatch(value):
+        return "contains characters other than A-Z a-z 0-9 . _ ~ -"
     if len(value) < API_TOKEN_MIN_CHARS:
         return f"is shorter than {API_TOKEN_MIN_CHARS} characters"
     return None
@@ -245,8 +252,8 @@ def api_token() -> str | None:
     problem = api_token_problem(tok)
     if problem is not None:
         raise ApiTokenInvalid(
-            f"{API_TOKEN_ENV} {problem}: use at least {API_TOKEN_MIN_CHARS} visible ASCII characters without "
-            "spaces (for example the output of: python -c \"import secrets; print(secrets.token_urlsafe(32))\"), "
+            f"{API_TOKEN_ENV} {problem}: use at least {API_TOKEN_MIN_CHARS} characters from A-Z a-z 0-9 . _ ~ - "
+            "only (for example the output of: python -c \"import secrets; print(secrets.token_urlsafe(32))\"), "
             f"or unset {API_TOKEN_ENV} to run on loopback without a token. The server does not start with an "
             "unusable token."
         )

@@ -3,7 +3,7 @@
 No compatible pose model and weights exist for this project's hardware
 (single-antenna ESP32 boards, amplitude-only LLTF CSI, no phase
 synchronisation, no antenna array). The research is in
-``docs/MODEL_COMPATIBILITY.md``; the gate that keeps the capability off, and
+``MODEL_COMPATIBILITY.md``; the gate that keeps the capability off, and
 lists why, is :func:`evaluate_pose_gate`.
 """
 

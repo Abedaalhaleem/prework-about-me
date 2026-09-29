@@ -156,6 +156,16 @@ def test_live_with_frames_and_baseline_enables_a_and_b_without_hardware_evidence
     assert any("UNVERIFIED" in r for r in b.reasons)
 
 
+def test_stalled_processing_never_reports_motion_detection_enabled(evidence):
+    # Results older than the stale timeout are shown as UNKNOWN by the runtime;
+    # capability B must not claim to be working at the same time.
+    caps = by_id(build_capabilities(live_running(evidence=evidence, processing_stalled_links=1)))
+    b = caps[CapabilityId.B_MOTION]
+    assert b.state == CapabilityState.DISABLED
+    assert any(r.startswith("PROCESSING_STALLED") for r in b.reasons)
+    assert caps[CapabilityId.A_ACQUISITION].state == CapabilityState.ENABLED
+
+
 def test_hardware_tested_comes_only_from_the_evidence_file(evidence):
     doctored = copy.deepcopy(evidence)
     doctored["capabilities"]["A_ACQUISITION"]["hardware_tested"] = True
