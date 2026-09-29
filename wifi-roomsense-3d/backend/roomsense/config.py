@@ -6,7 +6,9 @@ threshold therefore changes the version and invalidates calibrations that were
 recorded under a different version.
 
 No secrets are read from the config file. The optional API token for LAN
-exposure comes only from the ``ROOMSENSE_API_TOKEN`` environment variable.
+exposure comes only from the ``ROOMSENSE_API_TOKEN`` environment variable. When
+that variable is set it must hold a usable token (:func:`api_token`), otherwise
+the server refuses to start.
 """
 
 from __future__ import annotations
@@ -56,6 +58,7 @@ class StorageConfig(_Cfg):
     data_dir: str = "data"  # relative paths resolve against the repo root
     max_recording_bytes: int = Field(default=200_000_000, gt=0)
     max_recording_seconds: float = Field(default=3600.0, gt=0)
+    # Recording files and export zips together (storage.recordings.quota_used_bytes).
     max_total_recording_bytes: int = Field(default=2_000_000_000, gt=0)
     keep_raw_lines: bool = True  # store the raw serial line with each frame (debugging)
     max_raw_line_chars: int = Field(default=4096, gt=0)
@@ -201,7 +204,50 @@ def load_config(path: str | os.PathLike[str] | None = None) -> AppConfig:
     return AppConfig()
 
 
+API_TOKEN_MIN_CHARS = 16
+
+
+class ApiTokenInvalid(ValueError):
+    """``ROOMSENSE_API_TOKEN`` is set but cannot be used. The server must not
+    start. The message never contains the token (not even its length)."""
+
+
+def api_token_problem(value: str) -> str | None:
+    """Why ``value`` cannot be used as the API token, or ``None`` if it can.
+
+    A usable token has at least :data:`API_TOKEN_MIN_CHARS` characters, all
+    visible ASCII (no whitespace, control or non-ASCII characters): anything
+    else could never match what a client sends in ``Authorization: Bearer``
+    or in the WebSocket subprotocol. The text never contains the value.
+    """
+    if not value.strip():
+        return "is set but empty"
+    if any(ch.isspace() for ch in value):
+        return "contains whitespace"
+    if not all("!" <= ch <= "~" for ch in value):
+        return "contains control or non-ASCII characters"
+    if len(value) < API_TOKEN_MIN_CHARS:
+        return f"is shorter than {API_TOKEN_MIN_CHARS} characters"
+    return None
+
+
 def api_token() -> str | None:
-    """Token for non-loopback exposure. Never log this value."""
+    """The API token from ``ROOMSENSE_API_TOKEN``; ``None`` when the variable
+    is not set at all.
+
+    Raises :class:`ApiTokenInvalid` when the variable is set but unusable
+    (see :func:`api_token_problem`), on any bind address: a token the operator
+    meant to require is never silently ignored. Never log the value.
+    """
     tok = os.environ.get(API_TOKEN_ENV)
-    return tok if tok and len(tok) >= 16 else None
+    if tok is None:
+        return None
+    problem = api_token_problem(tok)
+    if problem is not None:
+        raise ApiTokenInvalid(
+            f"{API_TOKEN_ENV} {problem}: use at least {API_TOKEN_MIN_CHARS} visible ASCII characters without "
+            "spaces (for example the output of: python -c \"import secrets; print(secrets.token_urlsafe(32))\"), "
+            f"or unset {API_TOKEN_ENV} to run on loopback without a token. The server does not start with an "
+            "unusable token."
+        )
+    return tok

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roomsense.inference.zone.registry import ZoneModelRegistry
 from roomsense.recording_format import read_header, read_recording
 from roomsense.schemas import SourceMode
 from roomsense.storage.db import Database
@@ -27,12 +28,16 @@ from roomsense.storage.recordings import (
     iter_recording,
     iter_recording_events,
     list_recordings,
+    purge_recording,
+    quota_used_bytes,
     recording_file_for_read,
     recording_path,
+    total_export_bytes,
     total_recording_bytes,
 )
 
 from .storage_helpers import NS, T0, make_consent, make_frame, storage_cfg
+from .zone_helpers import passing_report, save_fake_model
 
 
 class FakeClock:
@@ -268,6 +273,25 @@ def test_total_quota_refuses_new_recordings(env) -> None:
     assert db.list_recordings() == []
 
 
+def test_exports_count_toward_the_total_quota(env) -> None:
+    db, data_dir = env
+    rdir, edir = data_dir / "recordings", data_dir / "exports"
+    rdir.mkdir(parents=True)
+    edir.mkdir(parents=True)
+    (rdir / "rec_old.jsonl.gz").write_bytes(b"\0" * 3000)
+    (edir / "rec_old.export.20260101T000000000000000Z.zip").write_bytes(b"\0" * 1500)
+    (edir / ".rec_old.export.20260101T000000000000001Z.zip.partial").write_bytes(b"\0" * 500)
+    (edir / "notes.txt").write_bytes(b"\0" * 10_000)  # not an export
+    assert total_recording_bytes(data_dir) == 3000
+    assert total_export_bytes(data_dir) == 2000
+    assert quota_used_bytes(data_dir) == 5000
+    rec, _, _ = _recorder(db, data_dir, max_total_recording_bytes=5000)
+    with pytest.raises(RecordingRefused) as ei:
+        _start(rec)
+    assert ei.value.code == "QUOTA_EXCEEDED" and "exports" in ei.value.detail
+    assert db.list_recordings() == []
+
+
 def test_remaining_quota_bounds_the_active_recording(env) -> None:
     db, data_dir = env
     rdir = data_dir / "recordings"
@@ -378,6 +402,85 @@ def test_delete_removes_file_rows_events_and_exports(env) -> None:
     assert db.get_recording(info.recording_id) is None
     assert db.list_events(recording_id=info.recording_id) == []
     assert not delete_recording(db, data_dir, info.recording_id)  # nothing left
+
+
+def test_delete_removes_partial_exports_consent_models_and_wal_images(env) -> None:
+    """Deleting a recording leaves nothing derived from it behind: hidden
+    .partial exports, its consent record, zone models trained on it, and the
+    deleted rows' text in the SQLite files (secure_delete + WAL truncation)."""
+    db, data_dir = env
+    assert db._c().execute("PRAGMA secure_delete").fetchone()[0] == 1
+    private = "PRIVATE-TEXT-4e1b9d"  # made-up marker for the deleted row's text
+    rec, _, _ = _recorder(db, data_dir)
+    consent = make_consent(purpose=f"purpose {private}")
+    info = _start(rec, consent=consent, label=f"label {private}")
+    rec.write(make_frame())
+    rec.stop()
+    other = _start(rec, label="kept")
+    rec.write(make_frame())
+    rec.stop()
+    exports = data_dir / "exports"
+    exports.mkdir()
+    partial = exports / f".{info.recording_id}.export.20260101T000000000000000Z.zip.partial"
+    other_partial = exports / f".{other.recording_id}.export.20260101T000000000000000Z.zip.partial"
+    partial.write_bytes(b"half a zip")
+    other_partial.write_bytes(b"half a zip")
+    reg = ZoneModelRegistry(data_dir, db)
+    sessions = [{"session_key": info.recording_id, "recording_id": info.recording_id},
+                {"session_key": other.recording_id, "recording_id": other.recording_id}]
+    trained_on_it = save_fake_model(reg, report={
+        **passing_report(), "dataset": {"sessions": sessions},
+        "splits": {"assignment": {info.recording_id: "train", other.recording_id: "test"}}})
+    unrelated = save_fake_model(reg, report={**passing_report(), "dataset": {"sessions": sessions[1:]}})
+    assert reg.models_trained_on(info.recording_id) == [trained_on_it.model_id]
+    wal = Path(f"{db.path}-wal")
+
+    def sqlite_bytes() -> bytes:
+        return db.path.read_bytes() + (wal.read_bytes() if wal.exists() else b"")
+
+    assert private.encode() in sqlite_bytes()
+    result = purge_recording(db, data_dir, info.recording_id)
+    assert result.deleted and result.wal_checkpoint_complete
+    assert result.removed_models == (trained_on_it.model_id,)
+    assert not partial.exists() and other_partial.exists()
+    assert db.get_consent(consent.consent_id) is None
+    assert db.get_recording(other.recording_id) is not None and db.get_consent(other.consent_id) is not None
+    assert [b.model_id for b in reg.list_bindings()[0]] == [unrelated.model_id]
+    assert db.get_zone_model(trained_on_it.model_id) is None and db.get_zone_model(unrelated.model_id) is not None
+    assert not list((data_dir / "models").glob(f"{trained_on_it.model_id}.*"))
+    assert not wal.exists() or wal.stat().st_size == 0
+    assert private.encode() not in sqlite_bytes()
+
+
+def test_shared_consent_is_kept_until_its_last_recording_is_deleted(env) -> None:
+    db, data_dir = env
+    rec, _, _ = _recorder(db, data_dir)
+    consent = make_consent()
+    first = _start(rec, consent=consent)
+    rec.stop()
+    second = _start(rec, consent=consent)
+    rec.stop()
+    assert delete_recording(db, data_dir, first.recording_id)
+    assert db.get_consent(consent.consent_id) is not None  # still documents the second recording
+    assert delete_recording(db, data_dir, second.recording_id)
+    assert db.get_consent(consent.consent_id) is None
+
+
+def test_models_trained_on_a_recording_are_found_even_in_damaged_files(env) -> None:
+    db, data_dir = env
+    reg = ZoneModelRegistry(data_dir, db)
+    models = data_dir / "models"
+    models.mkdir(parents=True)
+    (models / "zm_damaged.json").write_text('{"format": "x", "report": {"dataset": ["rec_target"', encoding="utf-8")
+    (models / "zm_other.json").write_text('{"report": {"note": "rec_target_2"}}', encoding="utf-8")
+    assert reg.models_trained_on("rec_target") == ["zm_damaged"]
+    assert reg.delete_models_trained_on("rec_target") == ["zm_damaged"]
+    assert not (models / "zm_damaged.json").exists() and (models / "zm_other.json").exists()
+    # Deleting a recording that only left a model behind still counts as a deletion.
+    save = save_fake_model(reg, report={**passing_report(), "splits": {"assignment": {"rec_gone": "train"}}})
+    result = purge_recording(db, data_dir, "rec_gone")
+    assert result.deleted and result.removed_models == (save.model_id,)
+    assert not purge_recording(db, data_dir, "rec_gone").deleted
 
 
 def test_symlinked_recording_is_never_followed(env, tmp_path: Path) -> None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
@@ -75,8 +77,11 @@ def stop_recording(rt: AppRuntime = Depends(get_runtime)) -> RecordingInfo:
 
 
 @router.delete("/recordings/{recording_id}")
-def delete_recording(recording_id: str, rt: AppRuntime = Depends(get_runtime)) -> dict[str, bool]:
-    return {"deleted": rt.delete_recording(recording_id)}
+def delete_recording(recording_id: str, rt: AppRuntime = Depends(get_runtime)) -> dict[str, Any]:
+    """``{"deleted": true, "removed_models": [...]}``: the recording, its exports,
+    label events and (once unused) consent record are deleted, together with
+    every zone model trained on it (listed in ``removed_models``)."""
+    return rt.delete_recording(recording_id)
 
 
 @router.get("/recordings/{recording_id}/export")

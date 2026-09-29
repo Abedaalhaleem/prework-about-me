@@ -12,13 +12,21 @@ Bounds (all from :class:`~roomsense.config.StorageConfig`):
   the limit by that much plus one record.
 * ``max_recording_seconds`` (and the optional per-recording ``max_seconds``):
   wall-clock duration from start.
-* ``max_total_recording_bytes``: a new recording is refused once existing
-  recordings reach it, and an active recording stops when it would exceed it.
+* ``max_total_recording_bytes``: counts recording files **and** export zips
+  (:func:`quota_used_bytes`). A new recording is refused once they reach it,
+  an active recording stops when it would exceed it, and an export that would
+  exceed it is refused (:mod:`roomsense.storage.exports`).
 
 Hitting a bound stops the recording with status ``TRUNCATED_LIMIT``; the file
 stays valid and replayable. Synthetic data may be recorded (useful for
 software tests) but is marked ``synthetic=True`` and can never be used as
 validation evidence.
+
+Deleting a recording (:func:`purge_recording`) removes everything derived
+from it: the file, its exports (including hidden ``.partial`` leftovers), its
+DB rows (recording, label events, and the consent record once no other
+recording uses it), every zone model trained on it (files and DB rows), and
+the old page images in the SQLite ``-wal`` file (``wal_checkpoint(TRUNCATE)``).
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ import dataclasses
 import logging
 import math
 import os
+import sqlite3
 import threading
 import time
 from collections.abc import Mapping
@@ -39,7 +48,7 @@ from pydantic import BaseModel, ValidationError
 from ..config import StorageConfig
 from ..recording_format import RecordingFormatError, RecordingWriter, read_recording
 from ..schemas import CsiFrame, InputFormat, QualityFlag, SourceMode
-from .db import Database
+from .db import Database, StorageError
 from .models import (
     MAX_LABEL_CHARS,
     ConsentRecord,
@@ -58,7 +67,11 @@ __all__ = [
     "recording_path",
     "recording_file_for_read",
     "total_recording_bytes",
+    "total_export_bytes",
+    "quota_used_bytes",
     "list_recordings",
+    "RecordingDeletion",
+    "purge_recording",
     "delete_recording",
     "iter_recording",
     "iter_recording_events",
@@ -122,17 +135,31 @@ def recording_file_for_read(data_dir: Path, recording_id: str) -> Path:
     return path
 
 
-def total_recording_bytes(data_dir: Path) -> int:
-    """Total size of recording files on disk (symlinks are not followed)."""
-    base = _recordings_dir(data_dir)
+def _sum_files(base: Path, suffixes: tuple[str, ...]) -> int:
     if not base.is_dir():
         return 0
     total = 0
     with os.scandir(base) as it:
         for entry in it:
-            if entry.name.endswith(RECORDING_SUFFIX) and entry.is_file(follow_symlinks=False):
+            if entry.name.endswith(suffixes) and entry.is_file(follow_symlinks=False):
                 total += entry.stat(follow_symlinks=False).st_size
     return total
+
+
+def total_recording_bytes(data_dir: Path) -> int:
+    """Total size of recording files on disk (symlinks are not followed)."""
+    return _sum_files(_recordings_dir(data_dir), (RECORDING_SUFFIX,))
+
+
+def total_export_bytes(data_dir: Path) -> int:
+    """Total size of export zips on disk, including ``.partial`` files of
+    exports being written or left by a crash (symlinks are not followed)."""
+    return _sum_files((Path(data_dir) / EXPORTS_SUBDIR).resolve(), (".zip", ".zip.partial"))
+
+
+def quota_used_bytes(data_dir: Path) -> int:
+    """What counts toward ``max_total_recording_bytes``: recordings plus exports."""
+    return total_recording_bytes(data_dir) + total_export_bytes(data_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -250,13 +277,14 @@ class Recorder:
                 if not math.isfinite(max_seconds) or max_seconds <= 0:
                     raise RecordingRefused("INVALID_ARGUMENT", "max_seconds must be a positive number")
 
-            used = total_recording_bytes(self._data_dir)
+            used = quota_used_bytes(self._data_dir)
             quota = self._cfg.max_total_recording_bytes
             if used >= quota:
                 raise RecordingRefused(
                     "QUOTA_EXCEEDED",
-                    f"existing recordings use {used} bytes, at or above max_total_recording_bytes={quota}; "
-                    "delete recordings before starting a new one",
+                    f"existing recordings and exports use {used} bytes, at or above "
+                    f"max_total_recording_bytes={quota}; delete recordings (their exports go with them) "
+                    "before starting a new one",
                 )
             remaining = quota - used
             if remaining < self._cfg.max_recording_bytes:
@@ -616,9 +644,49 @@ def list_recordings(db: Database, *, session_id: str | None = None, limit: int |
     return db.list_recordings(session_id=session_id, limit=limit)
 
 
-def delete_recording(db: Database, data_dir: Path, recording_id: str) -> bool:
-    """Delete a recording's file, its exports and its DB rows (recording +
-    label events). Returns True if anything was deleted.
+@dataclass(frozen=True)
+class RecordingDeletion:
+    """What :func:`purge_recording` removed."""
+
+    recording_id: str
+    deleted: bool  # anything at all was removed
+    removed_models: tuple[str, ...] = ()  # zone models trained on this recording (files + DB rows)
+    wal_checkpoint_complete: bool = True  # False: another connection kept the -wal file from being truncated
+
+
+_CHECKPOINT_ATTEMPTS = 3
+_CHECKPOINT_RETRY_S = 0.05
+
+
+def _truncate_wal(db: Database, recording_id: str) -> bool:
+    """``wal_checkpoint(TRUNCATE)`` so the deleted rows' old page images do
+    not linger in the ``-wal`` file. Retried briefly while another
+    connection's read transaction blocks it; SQLite checkpoints again when the
+    last connection closes."""
+    for attempt in range(_CHECKPOINT_ATTEMPTS):
+        try:
+            busy, _, _ = db.checkpoint("TRUNCATE")
+        except (sqlite3.Error, StorageError):
+            log.exception("WAL checkpoint after deleting recording %s failed", recording_id)
+            return False
+        if not busy:
+            return True
+        if attempt + 1 < _CHECKPOINT_ATTEMPTS:
+            time.sleep(_CHECKPOINT_RETRY_S)
+    log.warning("WAL checkpoint after deleting recording %s was blocked by another connection; it completes "
+                "when the database is closed", recording_id)
+    return False
+
+
+def purge_recording(db: Database, data_dir: Path, recording_id: str, *, registry: Any | None = None
+                    ) -> RecordingDeletion:
+    """Delete a recording and everything derived from it (see the module
+    docstring). ``deleted`` is True if anything was removed.
+
+    ``registry`` is the :class:`~roomsense.inference.zone.registry.ZoneModelRegistry`
+    to clean (default: one on ``data_dir`` and ``db``). A zone model trained
+    on the recording must not survive its deletion, so such models are
+    removed first, before the recording itself.
 
     Raises ``ValueError`` for an unsafe ID and :class:`RecordingRefused` while
     the recording is still being written.
@@ -627,7 +695,13 @@ def delete_recording(db: Database, data_dir: Path, recording_id: str) -> bool:
     info = db.get_recording(recording_id)
     if info is not None and info.status == RecordingStatus.RECORDING:
         raise RecordingRefused("RECORDING_ACTIVE", "stop the recording before deleting it")
-    removed = False
+    if registry is None:
+        # Imported here: the zone package itself builds on the storage layer.
+        from ..inference.zone.registry import ZoneModelRegistry
+
+        registry = ZoneModelRegistry(data_dir, db)
+    removed_models = tuple(registry.delete_models_trained_on(recording_id))
+    removed = bool(removed_models)
     path = recording_path(data_dir, recording_id)
     if path.is_symlink() or path.exists():
         if path.is_dir() and not path.is_symlink():
@@ -636,15 +710,25 @@ def delete_recording(db: Database, data_dir: Path, recording_id: str) -> bool:
         removed = True
     exports = (Path(data_dir) / EXPORTS_SUBDIR).resolve()
     if exports.is_dir():
-        # '.' cannot occur in an ID, so this pattern cannot match another
-        # recording's exports.
-        for f in exports.glob(f"{recording_id}.export.*.zip"):
-            if f.parent == exports and (f.is_file() or f.is_symlink()):
-                f.unlink()
-                removed = True
+        # '.' cannot occur in an ID, so these patterns cannot match another
+        # recording's exports. Hidden ".partial" files are exports that were
+        # being written (or were left by a crash).
+        for pattern in (f"{recording_id}.export.*.zip", f".{recording_id}.export.*.zip.partial"):
+            for f in exports.glob(pattern):
+                if f.parent == exports and (f.is_file() or f.is_symlink()):
+                    f.unlink()
+                    removed = True
     if db.delete_recording(recording_id):
         removed = True
-    return removed
+    complete = _truncate_wal(db, recording_id) if removed else True
+    return RecordingDeletion(recording_id=recording_id, deleted=removed, removed_models=removed_models,
+                             wal_checkpoint_complete=complete)
+
+
+def delete_recording(db: Database, data_dir: Path, recording_id: str) -> bool:
+    """:func:`purge_recording` (file, exports, DB rows, consent, zone models
+    trained on it, WAL); returns True if anything was deleted."""
+    return purge_recording(db, data_dir, recording_id).deleted
 
 
 def iter_recording(path: Path) -> Iterator[CsiFrame]:

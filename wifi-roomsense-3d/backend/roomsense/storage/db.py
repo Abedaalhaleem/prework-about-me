@@ -12,6 +12,11 @@ Design notes
 * WAL journal and ``foreign_keys=ON``. Foreign keys protect consent (a
   recording can never reference a consent record that does not exist) and
   cascade label events when their recording is deleted.
+* ``secure_delete=ON`` (set explicitly: the compiled-in default differs
+  between platforms), so the text of deleted rows is overwritten instead of
+  staying in free space. After deleting a recording, the caller runs
+  :meth:`Database.checkpoint` (``wal_checkpoint(TRUNCATE)``) so the old page
+  images do not linger in the ``-wal`` file either.
 * Schema changes are numbered migrations recorded in ``schema_migrations``.
   Re-running them is a no-op; a database written by a newer version is refused
   instead of being modified.
@@ -273,6 +278,8 @@ class Database:
         with self._lock:
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.execute("PRAGMA busy_timeout = 10000")
+            # Deleted rows (recordings, consents, labels) are overwritten, not left in free pages.
+            self._conn.execute("PRAGMA secure_delete = ON")
             self.journal_mode = str(self._conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]).lower()
             self._conn.execute("PRAGMA synchronous = NORMAL")
             self._migrate()
@@ -349,6 +356,21 @@ class Database:
                     "INSERT INTO schema_migrations (version, description, applied_at_unix_ns) VALUES (?, ?, ?)",
                     (mig.version, mig.description, time.time_ns()),
                 )
+
+    def checkpoint(self, mode: str = "TRUNCATE") -> tuple[int, int, int]:
+        """Run ``PRAGMA wal_checkpoint(<mode>)`` and return ``(busy, log_frames,
+        checkpointed_frames)``. ``TRUNCATE`` copies every WAL page into the main
+        file and truncates the ``-wal`` file to zero bytes, so the images of
+        deleted rows do not stay in it. ``busy`` is 1 if another connection's
+        read transaction prevented a complete checkpoint."""
+        if mode not in ("PASSIVE", "FULL", "RESTART", "TRUNCATE"):
+            raise ValueError(f"unknown checkpoint mode {mode!r}")
+        with self._lock:
+            conn = self._c()
+            if str(self.path) == ":memory:" or self.journal_mode != "wal":
+                return (0, 0, 0)
+            row = conn.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()
+            return (int(row[0]), int(row[1]), int(row[2])) if row is not None else (0, 0, 0)
 
     def schema_version(self) -> int:
         row = self._query_one("SELECT MAX(version) AS v FROM schema_migrations")
@@ -530,12 +552,23 @@ class Database:
         return [self._row_to_recording(r) for r in self._query(sql, params)]
 
     def delete_recording(self, recording_id: str) -> bool:
-        """Delete the recording row and its label events (one transaction).
-        Validation runs keep existing but lose the link to the recording."""
+        """Delete the recording row, its label events and its consent record
+        once no other recording references that consent (one transaction).
+        Validation runs keep existing but lose the link to the recording.
+        Returns True if the recording row existed."""
         with self._write() as c:
+            row = c.execute("SELECT consent_id FROM recordings WHERE recording_id = ?", (recording_id,)).fetchone()
             c.execute("DELETE FROM events WHERE recording_id = ?", (recording_id,))
             c.execute("UPDATE validation_runs SET recording_id = NULL WHERE recording_id = ?", (recording_id,))
-            return c.execute("DELETE FROM recordings WHERE recording_id = ?", (recording_id,)).rowcount > 0
+            deleted = c.execute("DELETE FROM recordings WHERE recording_id = ?", (recording_id,)).rowcount > 0
+            if row is not None:
+                # The consent only documented this recording; keep it while another one still needs it.
+                c.execute(
+                    "DELETE FROM consents WHERE consent_id = ? "
+                    "AND NOT EXISTS (SELECT 1 FROM recordings WHERE consent_id = ?)",
+                    (row["consent_id"], row["consent_id"]),
+                )
+            return deleted
 
     @staticmethod
     def _row_to_recording(row: sqlite3.Row) -> RecordingInfo:

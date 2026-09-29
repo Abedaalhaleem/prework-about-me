@@ -157,6 +157,8 @@ def test_a_board_unplugged_mid_stream_goes_offline_never_other_modes(tmp_path: P
         seen = _spy_engine(rt)
         rt.start_live()
         assert wait_until(lambda: rt.build_status().source_state == SourceState.RUNNING, 5)
+        # While (fake-port) LIVE frames with a documented layout arrive, no hardware is required.
+        assert wait_until(lambda: rt.build_status().hardware_required is False, 5)
         assert wait_until(lambda: rt.build_status().source_state == SourceState.DISCONNECTED, 8)
         time.sleep(1.0)
         st = rt.build_status()
@@ -166,7 +168,8 @@ def test_a_board_unplugged_mid_stream_goes_offline_never_other_modes(tmp_path: P
         # No baseline was recorded, so nothing may claim "no motion" either.
         assert all(r.state not in DECISION_STATES for r in hist)
         assert rt.link_states()[LINK] == ActivityState.SENSOR_OFFLINE
-        assert st.hardware_required is False  # real (fake-port) LIVE frames with a layout arrived
+        # The board was unplugged: hardware is required again (it is not sticky).
+        assert st.hardware_required is True
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +457,10 @@ def test_host_queue_drops_are_counted_and_reported(tmp_path: Path) -> None:
         st = rt.build_status()
         assert any(n.startswith("HOST_QUEUE_DROPS") and LINK in n for n in st.notes)
         assert rt.pump(1000) >= 64  # everything that was queued is still processed
+        # The drops belong to that session: a new session does not report them as its own.
+        st = rt.start_simulation("quiet_only", acknowledge_simulated=True, realtime=False)
+        assert rt.queue_drops() == {}
+        assert not any(n.startswith("HOST_QUEUE_DROPS") for n in st.notes)
     finally:
         rt.shutdown()
 
@@ -527,6 +534,50 @@ def test_old_zone_estimate_is_not_presented_as_current(tmp_path: Path) -> None:
         zone = rt.build_status().zone
         assert zone.state == ZoneState.ABSTAIN and zone.zone_id is None
         assert zone.reasons[0].startswith("ZONE_STALE")
+    finally:
+        rt.shutdown()
+
+
+def test_stalled_processing_never_shows_an_old_decision_as_current(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """If processing stops producing results (thread stalled or dead; here:
+    nobody pumps), status must not keep presenting the last MOTION / NO_MOTION
+    decision once it is older than detection.clear_stale_after_s."""
+    cfg = make_offline_cfg(tmp_path, **SHORT_BASELINE)
+    rt = AppRuntime(cfg, background_processing=False)
+    rt.start()
+    try:
+        rt.start_simulation("quiet_only", acknowledge_simulated=True, realtime=False)
+        pump_until(rt, lambda: (rt.data_elapsed_s() or 0.0) >= 1.0)
+        rt.start_baseline(confirm_room_empty=True)
+        pump_until(rt, lambda: (rt.data_elapsed_s() or 0.0) >= 14.0)
+        assert rt.stop_baseline().valid
+        pump_until(rt, lambda: rt.link_states().get(LINK) in DECISION_STATES)
+        before = rt.build_status()
+        decided = {a.link_id: a for a in before.activity if a.state in DECISION_STATES}
+        assert decided, "the check below would be vacuous without a decision"
+        assert not any(n.startswith("PROCESSING_STALLED") for n in before.notes)
+
+        # Processing stalls while the wall clock moves past clear_stale_after_s.
+        real_unix = rt._unix_clock
+        ahead_ns = int((cfg.detection.clear_stale_after_s + 1.0) * 1e9)
+        monkeypatch.setattr(rt, "_unix_clock", lambda: real_unix() + ahead_ns)
+        st = rt.build_status()
+        assert st.activity and {a.link_id for a in st.activity} == {a.link_id for a in before.activity}
+        for a in st.activity:
+            assert a.state == ActivityState.UNKNOWN
+            assert a.reasons[0].startswith("PROCESSING_STALLED")
+            assert a.activity_score is None and a.calibrated_probability is None
+            assert a.quality.level == QualityLevel.UNAVAILABLE
+        for lid, old in decided.items():
+            assert next(a for a in st.activity if a.link_id == lid).provenance == old.provenance
+        assert any(n.startswith("PROCESSING_STALLED: 1 link result(s)") for n in st.notes)
+
+        # The stand-in depends only on the result's age: with a current clock the
+        # (fresh) decision is shown again.
+        monkeypatch.setattr(rt, "_unix_clock", real_unix)
+        again = rt.build_status()
+        assert [a.state for a in again.activity] == [a.state for a in before.activity]
     finally:
         rt.shutdown()
 

@@ -18,7 +18,7 @@ websocket_push_hz = 4.0     # UI refresh of status; NOT the sensor update rate
 data_dir = "data"                    # relative to the repository root
 max_recording_bytes = 200_000_000    # per recording (compressed)
 max_recording_seconds = 3600.0
-max_total_recording_bytes = 2_000_000_000
+max_total_recording_bytes = 2_000_000_000  # recordings and their export zips together
 keep_raw_lines = true                # keep each raw serial line with the frame, for debugging
 
 [acquisition]
@@ -28,18 +28,25 @@ max_line_bytes = 8192
 alignment_tolerance_s = 0.25
 
 # One [[acquisition.receivers]] block per ESP32 receiver on USB. The serial port is
-# never guessed: list the ports with `roomsense ports` or in the UI.
+# never guessed: list the ports with `roomsense ports` (cd backend && uv run roomsense ports)
+# or in the UI.
+#
+# NO RECEIVER IS CONFIGURED YET. Both blocks below are commented out on purpose,
+# because /dev/ttyUSB0 etc. are only sample ports. To use a board: remove the
+# leading "# " from every line of ONE block, then set `port` to the port your
+# board actually shows. Until then, starting the LIVE source is refused with
+# NO_RECEIVERS_CONFIGURED (replay and clearly labelled simulation still work).
 #
 # RoomSense firmware (firmware/esp32/roomsense_csi_rx) in ESP-NOW mode, with the
 # RoomSense transmitter (firmware/esp32/roomsense_csi_tx):
-[[acquisition.receivers]]
-receiver_id = "rx1"
-port = "/dev/ttyUSB0"                 # macOS: /dev/cu.usbserial-XXXX  Windows: COM5
-baud = 921600
-input_format = "roomsense-rscsi-v1"
-transmitter_id = "tx1"
-transmitter_mac = "1a:00:00:00:00:00" # must match CONFIG_RS_TX_MAC on the transmitter
-declared_board = "ESP32-S3-DevKitC-1U" # what you plugged in (user-declared; the firmware reports the chip)
+# [[acquisition.receivers]]
+# receiver_id = "rx1"
+# port = "/dev/ttyUSB0"                 # SET YOUR PORT. macOS: /dev/cu.usbserial-XXXX  Windows: COM5
+# baud = 921600
+# input_format = "roomsense-rscsi-v1"
+# transmitter_id = "tx1"
+# transmitter_mac = "1a:00:00:00:00:00" # must match CONFIG_RS_TX_MAC on the transmitter
+# declared_board = "ESP32-S3-DevKitC-1U" # what you plugged in (user-declared; the firmware reports the chip)
 
 # Unmodified Espressif esp-csi csi_recv_router firmware on an ESP32-S3 (upstream
 # format; no hello line, so you must declare the chip and the CSI config):

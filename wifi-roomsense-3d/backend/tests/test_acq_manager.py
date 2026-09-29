@@ -243,3 +243,33 @@ def test_consumers_are_never_called_concurrently():
     for th in threads:
         th.join()
     assert overlaps[0] == 0 and len(seen) == 400
+
+
+def test_live_layout_links_need_recent_measured_frames_with_a_documented_layout():
+    """Backs SystemStatus.hardware_required (never sticky for the process)."""
+    mgr = AcquisitionManager(cfg(stale_after_s=2.0))
+    live = FakeSource(SourceMode.LIVE, [L1, L2])
+    mgr.start(live)
+    t = 10 * S
+    assert mgr.live_layout_links(t) == []
+    live.push(FrameEvent(make_frame(link_id=L1, host_mono_ns=t, layout_id=None)))  # undocumented layout
+    live.push(FrameEvent(make_frame(link_id=L2, host_mono_ns=t, flags=("SYNTHETIC",))))  # not a measurement
+    live.push(FrameEvent(make_frame(link_id=L2, host_mono_ns=t, flags=("REPLAYED",))))
+    assert mgr.live_layout_links(t) == []
+    live.push(FrameEvent(make_frame(link_id=L1, host_mono_ns=t + S)))
+    assert mgr.live_layout_links(t + S) == [L1]
+    assert mgr.live_layout_links(t + 3 * S) == [L1]  # exactly stale_after_s old still counts
+    assert mgr.live_layout_links(t + 3 * S + 1) == []  # stale
+    live.push(FrameEvent(make_frame(link_id=L1, host_mono_ns=t + 4 * S)))
+    assert mgr.live_layout_links(t + 4 * S) == [L1]
+    live.push(link("DISCONNECTED", L1))  # a reported disconnect counts at once
+    assert mgr.live_layout_links(t + 4 * S) == []
+    live.push(FrameEvent(make_frame(link_id=L1, host_mono_ns=t + 5 * S)))  # back
+    assert mgr.live_layout_links(t + 5 * S) == [L1]
+    # Replay and simulation never count, even with documented layouts.
+    rep = FakeSource(SourceMode.REPLAY, [L1])
+    mgr.start(rep)
+    rep.push(FrameEvent(make_frame(link_id=L1, mode=SourceMode.REPLAY, host_mono_ns=t + 6 * S)))
+    assert mgr.live_layout_links(t + 6 * S) == []
+    mgr.stop()
+    assert mgr.live_layout_links(t + 6 * S) == []

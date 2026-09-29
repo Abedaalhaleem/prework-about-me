@@ -19,7 +19,13 @@ import pytest
 import roomsense.acquisition.serial_source as serial_source
 from roomsense import __version__
 from roomsense.cli import main
+from roomsense.config import API_TOKEN_ENV, load_config
+from roomsense.runtime import DB_FILENAME, AppRuntime
+from roomsense.schemas import SourceMode
+from roomsense.storage.db import Database
+from roomsense.storage.recordings import Recorder, recording_path
 from tests.api_helpers import PacedSerialFactory, _no_api_token_in_env  # noqa: F401  (autouse fixture)
+from tests.storage_helpers import make_consent, make_frame
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -180,3 +186,65 @@ def test_python_dash_m_entry_point() -> None:
                        text=True, timeout=60, check=False)
     assert r.returncode == 0
     assert r.stdout.strip() == f"roomsense {__version__}"
+
+
+def _stored_recording(cfg_path: Path) -> str:
+    """One small recording made with the storage layer (hand-built test frames)."""
+    cfg = load_config(cfg_path)
+    data = cfg.storage.resolved_data_dir()
+    data.mkdir(parents=True, exist_ok=True)
+    with Database(data / DB_FILENAME) as db:
+        rec = Recorder(db, data, cfg.storage)
+        info = rec.start(consent=make_consent(), label="cli lock test", session_id="sess_cli",
+                         source_mode=SourceMode.LIVE)
+        rec.write(make_frame(session_id="sess_cli"))
+        rec.stop()
+    return info.recording_id
+
+
+def test_cli_refuses_to_change_the_data_folder_while_a_server_uses_it(tmp_path: Path,
+                                                                     capsys: pytest.CaptureFixture[str]) -> None:
+    cfg_path = _write_cfg(tmp_path)
+    cfg = str(cfg_path)
+    rid = _stored_recording(cfg_path)
+    spec = json.dumps([{"recording_id": rid, "label": "A", "split": "train"}])
+    server = AppRuntime(load_config(cfg_path), background_processing=False)  # holds the data-folder lock
+    try:
+        for argv in (["recordings", "delete", "--config", cfg, rid],
+                     ["recordings", "export", "--config", cfg, rid],
+                     ["zone-train", "--config", cfg, "--sessions", spec]):
+            assert main(argv) == 1, argv
+            err = capsys.readouterr().err
+            assert "DATA_DIR_LOCKED" in err and "Stop the server" in err and "use the UI" in err
+        assert server.db.get_recording(rid) is not None
+        assert recording_path(tmp_path / "data", rid).is_file()
+        assert not (tmp_path / "data" / "exports").exists()
+        assert main(["recordings", "list", "--config", cfg, "--json"]) == 0  # reading is fine
+        assert [r["recording_id"] for r in _json_out(capsys)] == [rid]
+    finally:
+        server.shutdown()
+    # Once the server is stopped the same commands work.
+    assert main(["recordings", "export", "--config", cfg, rid]) == 0
+    assert Path(capsys.readouterr().out.strip()).is_file()
+    assert main(["recordings", "delete", "--config", cfg, rid]) == 0
+    assert f"deleted {rid}" in capsys.readouterr().out
+    assert not recording_path(tmp_path / "data", rid).exists()
+    assert not list((tmp_path / "data" / "exports").glob(f"{rid}*"))
+
+
+@pytest.mark.parametrize("bad", ["xq7Zk9", "", "   ", "0123456789abcdef 01234", "0123456789abcdefghij\n",
+                                 "t\u00f6ken-0123456789abcdef"])
+def test_serve_refuses_an_unusable_api_token_on_loopback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                         capsys: pytest.CaptureFixture[str], bad: str) -> None:
+    import uvicorn
+
+    def never(*_: Any, **__: Any) -> None:
+        raise AssertionError("uvicorn must not start")
+
+    monkeypatch.setattr(uvicorn, "run", never)
+    monkeypatch.setenv(API_TOKEN_ENV, bad)
+    assert main(["serve", "--config", str(_write_cfg(tmp_path))]) == 2
+    captured = capsys.readouterr()
+    assert "ROOMSENSE_API_TOKEN" in captured.err
+    if bad.strip():
+        assert bad.strip() not in captured.err + captured.out  # the token is never printed

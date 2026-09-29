@@ -175,7 +175,9 @@ def test_recording_crud_and_consent_restrict(db: Database) -> None:
     got_run = db.get_validation_run(run.run_id)
     assert got_run is not None and got_run.recording_id is None
     assert not db.delete_recording("rec_a")
-    assert db.delete_consent("consent_1")
+    # The consent documented only this recording, so it went with it.
+    assert db.get_consent("consent_1") is None
+    assert not db.delete_consent("consent_1")
 
 
 def test_synthetic_recording_must_be_flagged() -> None:

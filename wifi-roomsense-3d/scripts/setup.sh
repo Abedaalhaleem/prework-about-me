@@ -77,31 +77,17 @@ fi
 
 # --- config and local folders ------------------------------------------------------
 if [ ! -f "$REPO/configs/roomsense.toml" ]; then
-  # The example's receiver block names a sample port (/dev/ttyUSB0) that may not
-  # exist here (macOS uses /dev/cu.*). Copy it commented out, so no receiver
-  # looks configured until the user sets a real port. Ports are never guessed.
+  # The example ships its receiver blocks commented out (their ports are only
+  # samples), so it is copied verbatim. It is checked first: it must load, and
+  # it must not configure a receiver, because ports are never guessed.
   TMP_CFG="$REPO/configs/.roomsense.toml.tmp"
-  awk '
-    /^\[\[acquisition\.receivers\]\]/ {
-      if (!noted) {
-        print "# NOT CONFIGURED YET: set each receiver'"'"'s serial port (list ports with: cd backend && uv run roomsense ports),"
-        print "# then remove the leading \"# \" from its block. Until then no receiver is configured and"
-        print "# starting the LIVE source is refused with NO_RECEIVERS_CONFIGURED."
-        noted = 1
-      }
-      in_rx = 1
-      print "# " $0
-      next
-    }
-    in_rx && (/^[[:space:]]*$/ || /^\[/) { in_rx = 0 }
-    { if (in_rx) print "# " $0; else print }
-  ' "$REPO/configs/roomsense.example.toml" >"$TMP_CFG"
+  cp "$REPO/configs/roomsense.example.toml" "$TMP_CFG"
   if (cd "$REPO/backend" && uv run --frozen python -c 'import sys; from roomsense.config import load_config; c = load_config(sys.argv[1]); sys.exit(0 if not c.acquisition.receivers else 1)' "$TMP_CFG"); then
     mv "$TMP_CFG" "$REPO/configs/roomsense.toml"
-    info "created configs/roomsense.toml from the example with the receiver block commented out; set your boards' serial ports there"
+    info "created configs/roomsense.toml from the example. No receiver is configured yet: uncomment one [[acquisition.receivers]] block there and set your board's serial port (list ports with: cd backend && uv run roomsense ports)"
   else
     rm -f "$TMP_CFG"
-    die "could not prepare configs/roomsense.toml from the example; copy configs/roomsense.example.toml by hand and edit the receiver ports"
+    die "configs/roomsense.example.toml does not load, or it configures a receiver with a sample port; copy it to configs/roomsense.toml by hand and set the receiver ports"
   fi
 else
   info "configs/roomsense.toml exists; left unchanged"

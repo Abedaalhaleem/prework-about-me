@@ -4,7 +4,9 @@ Rules
 -----
 * **Loopback by default.** :func:`check_bind_allowed` refuses a non-loopback
   bind unless ``server.allow_non_loopback`` is true *and* the
-  ``ROOMSENSE_API_TOKEN`` environment variable holds a token (>= 16 chars).
+  ``ROOMSENSE_API_TOKEN`` environment variable holds a token (>= 16 visible
+  ASCII chars). A variable that is set but unusable is refused on every bind
+  address, loopback included (the server does not start).
 * **Token on every /api request when configured.** If a token is configured
   (on any bind address), every ``/api`` HTTP request must carry
   ``Authorization: Bearer <token>`` and the WebSocket must present it either
@@ -35,7 +37,7 @@ import json
 import urllib.parse
 from typing import Any, Awaitable, Callable, Iterable
 
-from ..config import AppConfig, api_token
+from ..config import ApiTokenInvalid, AppConfig, api_token
 
 __all__ = [
     "WS_SUBPROTOCOL",
@@ -73,8 +75,15 @@ def check_bind_allowed(cfg: AppConfig, token: str | None = None) -> None:
     """Raise :class:`StartupRefused` unless the bind address is allowed.
 
     ``token`` defaults to :func:`roomsense.config.api_token` (the environment).
+    A ``ROOMSENSE_API_TOKEN`` that is set but unusable (empty, too short,
+    whitespace, control or non-ASCII characters) is refused on every bind
+    address, loopback included; the message never contains the token.
     """
-    token = api_token() if token is None else token
+    if token is None:
+        try:
+            token = api_token()
+        except ApiTokenInvalid as exc:
+            raise StartupRefused(str(exc)) from None
     if cfg.server.is_loopback():
         return
     if not cfg.server.allow_non_loopback:

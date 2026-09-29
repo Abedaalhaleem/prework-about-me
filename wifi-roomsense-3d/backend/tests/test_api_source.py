@@ -108,3 +108,44 @@ def test_live_with_missing_board_reports_disconnected(tmp_path: Path) -> None:
         st = c.get("/api/status").json()
         assert st["source_mode"] == "LIVE" and st["simulated"] is False
         assert st["hardware_required"] is True
+
+
+def test_hardware_required_is_not_sticky(tmp_path: Path) -> None:
+    """hardware_required = NOT (LIVE and a link delivered documented-layout frames
+    within stale_after_s): a live session earlier in the process does not clear it."""
+    cfg = make_cfg(tmp_path, acquisition={"receivers": [receiver_cfg()]})
+    rt = AppRuntime(cfg, serial_factory=PacedSerialFactory(rate_hz=50))
+    with api_client(cfg, rt) as c:
+        assert c.get("/api/status").json()["hardware_required"] is True  # no source
+        assert c.post("/api/source/live", json={}).status_code == 200
+        assert wait_until(lambda: c.get("/api/status").json()["hardware_required"] is False, 5)
+        st = c.post("/api/source/simulation", json={"scenario": "quiet_only", "acknowledge_simulated": True}).json()
+        assert st["hardware_required"] is True
+        assert wait_until(lambda: len(c.get("/api/status").json()["activity"]) > 0, 5)
+        st = c.get("/api/status").json()
+        assert st["source_mode"] == "SIMULATION" and st["hardware_required"] is True
+        assert c.post("/api/source/stop").json()["hardware_required"] is True
+
+
+def test_configured_receivers_endpoint(tmp_path: Path) -> None:
+    full = {"receiver_id": "rx1", "port": "/dev/ttyUSB0", "baud": 115200, "input_format": "roomsense-rscsi-v1",
+            "transmitter_id": "tx1", "transmitter_mac": "1a:00:00:00:00:00", "declared_chip": "esp32s3",
+            "declared_board": "ESP32-S3-DevKitC-1U", "allow_undocumented_layout_assumption": True}
+    upstream = {"receiver_id": "rx_router", "port": "COM5", "input_format": "esp-csi-upstream-classic-v1",
+                "transmitter_id": "router", "declared_chip": "esp32", "ltf_config": "lltf_only"}
+    with api_client(make_cfg(tmp_path, acquisition={"receivers": [full, upstream]})) as c:
+        r = c.get("/api/source/receivers")
+        assert r.status_code == 200
+        assert r.json() == [
+            {"receiver_id": "rx1", "port": "/dev/ttyUSB0", "baud": 115200, "input_format": "roomsense-rscsi-v1",
+             "transmitter_id": "tx1", "transmitter_mac": "1a:00:00:00:00:00", "declared_chip": "esp32s3",
+             "declared_board": "ESP32-S3-DevKitC-1U", "ltf_config": None, "link_id": "tx1->rx1"},
+            {"receiver_id": "rx_router", "port": "COM5", "baud": 921600,
+             "input_format": "esp-csi-upstream-classic-v1", "transmitter_id": "router", "transmitter_mac": None,
+             "declared_chip": "esp32", "declared_board": None, "ltf_config": "lltf_only",
+             "link_id": "router->rx_router"},
+        ]
+        # Listing receivers never starts or opens anything.
+        assert c.get("/api/status").json()["source_banner"] == "NO SOURCE"
+    with api_client(make_cfg(tmp_path)) as c:
+        assert c.get("/api/source/receivers").json() == []

@@ -10,7 +10,10 @@ The zip holds exactly four entries and nothing else from the data directory:
 * ``PROVENANCE.txt``: the provenance statement in plain words.
 
 Only one export per recording is kept (older ones are replaced), so exports
-never grow beyond the size of the recordings themselves.
+never grow beyond the size of the recordings themselves. Export zips count
+toward ``storage.max_total_recording_bytes`` together with the recordings: an
+export that would exceed it is refused (``QUOTA_EXCEEDED``) before anything is
+written.
 """
 
 from __future__ import annotations
@@ -30,17 +33,26 @@ from ..recording_format import RECORDING_FORMAT, RecordingFormatError, read_head
 from ..schemas import SOURCE_MODE_BANNER, SourceMode
 from .db import Database
 from .models import RecordingInfo, RecordingStatus, validate_id
-from .recordings import EXPORTS_SUBDIR, iter_recording_events, recording_file_for_read
+from .recordings import EXPORTS_SUBDIR, iter_recording_events, quota_used_bytes, recording_file_for_read
 
 __all__ = ["EXPORT_FORMAT", "ExportError", "export_recording", "provenance_statement"]
 
 EXPORT_FORMAT = "roomsense-export-v1"
 _MAX_LINK_EVENTS = 100_000  # bound memory for events.csv
 _CSV_COLUMNS = ("source", "t_unix_ns", "kind", "label", "link_id", "receiver_id", "detail", "notes", "event_id")
+# Upper bound for zip headers, the central directory and deflate overhead on
+# the three small text entries (the frames file is stored, not recompressed).
+_ZIP_OVERHEAD_BYTES = 64 * 1024
 
 
 class ExportError(RuntimeError):
-    """The recording cannot be exported (missing, still recording, unreadable)."""
+    """The recording cannot be exported (missing, still recording, unreadable,
+    or the storage quota would be exceeded). ``code`` is machine readable:
+    ``EXPORT_REFUSED`` or ``QUOTA_EXCEEDED``."""
+
+    def __init__(self, detail: str, code: str = "EXPORT_REFUSED") -> None:
+        super().__init__(detail)
+        self.code = code
 
 
 def provenance_statement(info: RecordingInfo) -> str:
@@ -130,10 +142,36 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def export_recording(db: Database, data_dir: Path, recording_id: str, *, now_ns: int | None = None) -> Path:
+def _check_quota(data_dir: Path, exports: Path, recording_id: str, quota: int, reserved: int, estimate: int) -> None:
+    replaced = 0
+    if exports.is_dir():
+        for old in exports.glob(f"{recording_id}.export.*.zip"):
+            if old.parent == exports and old.is_file() and not old.is_symlink():
+                replaced += old.stat().st_size
+    used = quota_used_bytes(data_dir)
+    projected = used - replaced + estimate + reserved
+    if projected > quota:
+        active = f" plus {reserved} bytes reserved for the active recording" if reserved else ""
+        raise ExportError(
+            f"exporting {recording_id} needs about {estimate} bytes; recordings and exports already use {used} "
+            f"bytes{active}, which would exceed max_total_recording_bytes={quota}. Delete recordings you no "
+            "longer need (their exports go with them) and export again.",
+            code="QUOTA_EXCEEDED",
+        )
+
+
+def export_recording(db: Database, data_dir: Path, recording_id: str, *, now_ns: int | None = None,
+                     max_total_bytes: int | None = None, reserved_bytes: int = 0) -> Path:
     """Write ``<data_dir>/exports/<recording_id>.export.<UTC stamp>.zip`` and
     return its path. Raises ``ValueError`` for an unsafe ID and
-    :class:`ExportError` if the recording cannot be exported."""
+    :class:`ExportError` if the recording cannot be exported.
+
+    With ``max_total_bytes`` (``storage.max_total_recording_bytes``) the export
+    is refused with code ``QUOTA_EXCEEDED`` when recordings + exports + this
+    zip (minus the older export of the same recording that it replaces) +
+    ``reserved_bytes`` (what an active recording may still write) would
+    exceed it.
+    """
     validate_id(recording_id, "recording_id")
     info = db.get_recording(recording_id)
     if info is None:
@@ -189,7 +227,13 @@ def export_recording(db: Database, data_dir: Path, recording_id: str, *, now_ns:
         },
     }
 
+    manifest_text = json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False)
     exports = (Path(data_dir) / EXPORTS_SUBDIR).resolve()
+    if max_total_bytes is not None:
+        _check_quota(data_dir, exports, recording_id, max_total_bytes, max(0, int(reserved_bytes)),
+                     frames_path.stat().st_size
+                     + sum(len(t.encode("utf-8")) for t in (manifest_text, events_csv, provenance))
+                     + _ZIP_OVERHEAD_BYTES)
     exports.mkdir(parents=True, exist_ok=True)
     # Nanoseconds in the name keep two exports within one second distinct.
     stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(now // 1_000_000_000)) + f"{now % 1_000_000_000:09d}Z"
@@ -197,7 +241,7 @@ def export_recording(db: Database, data_dir: Path, recording_id: str, *, now_ns:
     tmp = exports / f".{recording_id}.export.{stamp}.zip.partial"
     try:
         with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False))
+            zf.writestr("manifest.json", manifest_text)
             # Already gzip-compressed; deflating it again only costs time.
             zf.write(frames_path, arcname="frames.jsonl.gz", compress_type=zipfile.ZIP_STORED)
             zf.writestr("events.csv", events_csv)

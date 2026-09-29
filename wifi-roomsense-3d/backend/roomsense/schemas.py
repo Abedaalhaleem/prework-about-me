@@ -670,6 +670,31 @@ class UnsupportedCapability(_Model):
 
 
 class SystemStatus(_Model):
+    """Snapshot of everything the UI shows (``GET /api/status``, pushed on ``/api/ws``).
+
+    * ``source_banner`` names the selected source mode. ``simulated`` is True
+      for SIMULATION *and* for a REPLAY of simulated data: the banner then
+      stays ``"RECORDED REPLAY"`` while ``simulated`` is True, and the UI
+      shows both.
+    * ``hardware_required`` = NOT (the active source is LIVE AND at least one
+      live link has delivered measured frames with a documented CSI layout
+      within ``acquisition.stale_after_s`` and has not reported a disconnect
+      since). It is therefore True with no source, during replay and
+      simulation, before the first documented frame, and again once a board
+      is unplugged or its link goes stale. It is never sticky for the
+      process.
+    * ``activity`` holds the newest result per link of the current session
+      only. A result computed longer ago than ``detection.clear_stale_after_s``
+      (processing stalled or stopped) is replaced by state ``UNKNOWN`` with
+      the reason ``"PROCESSING_STALLED: ..."``, no score, quality
+      ``UNAVAILABLE`` and its original provenance; an old MOTION / NO_MOTION
+      decision is never shown as current.
+    * ``notes`` are ``"CODE: text"`` lines. Notes about a session
+      (``RECORDING_STOPPED``, ``HOST_QUEUE_DROPS``, ``END_OF_STREAM``,
+      ``FRAMES_REJECTED_SOURCE_MISMATCH``) are cleared when a new source or
+      session starts.
+    """
+
     server_time_unix_ns: int
     source_mode: SourceMode | None  # None when no source is selected
     source_banner: str  # "LIVE MEASUREMENTS" / "RECORDED REPLAY" / "SIMULATION" / "NO SOURCE"
@@ -677,7 +702,7 @@ class SystemStatus(_Model):
     source_state: SourceState
     source_detail: str | None = None
     session_id: str | None = None
-    hardware_required: bool = True
+    hardware_required: bool = True  # see the class docstring; never sticky for the process
     capabilities: list[CapabilityStatus] = Field(default_factory=list)
     links: list[LinkStatus] = Field(default_factory=list)
     activity: list[ActivityResult] = Field(default_factory=list)

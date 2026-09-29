@@ -23,6 +23,11 @@ report (:func:`~.evaluate.report_supports_enabled`), so hand-editing the
 flag in the JSON cannot enable a model whose report does not pass.
 When a :class:`~roomsense.storage.db.Database` is given, a row is also
 written to its ``zone_models`` table.
+
+The stored report lists the recordings a model was trained on
+(``dataset.sessions[].recording_id`` and the split assignment), so
+:meth:`ZoneModelRegistry.delete_models_trained_on` can remove every model
+derived from a recording the user deletes.
 """
 
 from __future__ import annotations
@@ -118,6 +123,37 @@ def _require(d: dict[str, Any], key: str, typ: type | tuple[type, ...]) -> Any:
     if not isinstance(v, typ):
         raise RegistryError("BINDING_INVALID", f"binding field {key!r} has the wrong type")
     return v
+
+
+def _training_recording_ids(report: dict[str, Any]) -> set[str]:
+    """Recording ids (session keys) a training report says it used, in any split."""
+    ids: set[str] = set()
+    dataset = report.get("dataset")
+    if isinstance(dataset, dict) and isinstance(dataset.get("sessions"), list):
+        for sess in dataset["sessions"]:
+            if isinstance(sess, dict):
+                for key in ("recording_id", "session_key"):
+                    if isinstance(sess.get(key), str):
+                        ids.add(sess[key])
+    splits = report.get("splits")
+    if isinstance(splits, dict) and isinstance(splits.get("assignment"), dict):
+        ids.update(k for k in splits["assignment"] if isinstance(k, str))
+    return ids
+
+
+def _binding_mentions_recording(raw: bytes, recording_id: str) -> bool:
+    """True if the model file ``raw`` (binding + report JSON) was trained on
+    ``recording_id``. A file that cannot be parsed, or whose report has no
+    session lists, is matched on the recording id as an exact JSON string
+    anywhere in it, so a damaged file never hides a model."""
+    try:
+        doc = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        doc = None
+    report = doc.get("report") if isinstance(doc, dict) else None
+    if isinstance(report, dict) and ("dataset" in report or "splits" in report):
+        return recording_id in _training_recording_ids(report)
+    return json.dumps(recording_id).encode("utf-8") in raw
 
 
 def _str_list(d: dict[str, Any], key: str) -> tuple[str, ...]:
@@ -362,3 +398,36 @@ class ZoneModelRegistry:
             if self.db is not None and self.db.delete_zone_model(model_id):
                 removed = True
             return removed
+
+    def models_trained_on(self, recording_id: str) -> list[str]:
+        """Ids of stored models whose training data (any split) included
+        ``recording_id``, read from each model's JSON file (see
+        :func:`_binding_mentions_recording`)."""
+        if not isinstance(recording_id, str) or _ID_RE.fullmatch(recording_id) is None:
+            raise RegistryError("INVALID_RECORDING_ID", "recording id must match ^[A-Za-z0-9_-]{1,64}$")
+        with self._lock:
+            base = self.models_dir
+            if not base.is_dir():
+                return []
+            out: list[str] = []
+            for p in sorted(base.glob("*.json")):
+                mid = p.name[: -len(".json")]
+                if _ID_RE.fullmatch(mid) is None:
+                    continue
+                try:
+                    raw = self._read_bounded(p, MAX_BINDING_BYTES)
+                except RegistryError:
+                    continue  # a symlink or an oversized file: never written or loaded by this app
+                if _binding_mentions_recording(raw, recording_id):
+                    out.append(mid)
+            return out
+
+    def delete_models_trained_on(self, recording_id: str) -> list[str]:
+        """Delete (files and DB rows) every model trained on ``recording_id``;
+        returns their ids. A model derived from data the user deleted must
+        not survive it. Call :meth:`ZonePredictor.refresh` afterwards."""
+        with self._lock:
+            ids = self.models_trained_on(recording_id)
+            for mid in ids:
+                self.delete(mid)
+            return ids

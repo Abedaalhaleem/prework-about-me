@@ -3,12 +3,17 @@
 ``create_app(cfg, runtime=None)`` builds the app:
 
 * refuses (raises :class:`~roomsense.api.security.StartupRefused`) a
-  non-loopback bind without ``allow_non_loopback`` and an API token;
+  non-loopback bind without ``allow_non_loopback`` and an API token, and any
+  bind while ``ROOMSENSE_API_TOKEN`` is set but unusable;
 * requires ``Authorization: Bearer <token>`` on every ``/api`` route and the
   WebSocket when a token is configured; checks the ``Host`` header on loopback;
   refuses WebSocket handshakes and state-changing requests whose ``Origin`` is
   another web page (see :mod:`roomsense.api.security`);
 * allows CORS only for ``server.cors_dev_origins``;
+* answers every error with ``{"detail": "CODE: text", "code": "CODE"}``;
+  request-validation errors (422) use ``code = "VALIDATION_ERROR"``, a detail
+  that names the offending field paths, and an ``errors`` list of
+  ``{type, loc, msg}`` that never echoes the rejected input values;
 * logs one structured line per request (method, path, status, duration) and
   never logs headers, bodies, query strings or tokens;
 * serves ``frontend/dist`` (with SPA fallback) at ``/`` when it exists, else a
@@ -22,25 +27,30 @@ CDN, and this app makes no external requests. ``/api/openapi.json`` is served.
 
 from __future__ import annotations
 
+import http
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
 import anyio
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.datastructures import Headers
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .. import __version__
-from ..config import REPO_ROOT, AppConfig, api_token, load_config
+from ..config import REPO_ROOT, ApiTokenInvalid, AppConfig, api_token, load_config
 from ..logging_setup import register_secret
 from ..runtime import AppRuntime, OperationRefused
 from . import routes_calibration, routes_recordings, routes_source, routes_status, routes_validation, ws
-from .security import SecurityMiddleware, check_bind_allowed
+from .security import SecurityMiddleware, StartupRefused, check_bind_allowed
 
-__all__ = ["create_app", "FRONTEND_DIST", "CSP"]
+__all__ = ["create_app", "FRONTEND_DIST", "CSP", "error_body", "validation_error_body"]
 
 log = logging.getLogger("roomsense.api")
 
@@ -77,6 +87,83 @@ npm run build</pre>
 labelled simulation are selected explicitly.</p>
 </body></html>
 """
+
+
+# ---------------------------------------------------------------------------
+# Uniform error bodies: {"detail": "CODE: text", "code": "CODE"}
+# ---------------------------------------------------------------------------
+
+_CODE_PREFIX = re.compile(r"^([A-Z][A-Z0-9_]*): ")
+_MAX_VALIDATION_ERRORS = 50
+_SUMMARY_ERRORS = 3
+_MAX_MSG_CHARS = 200
+
+
+def _status_code_name(status: int) -> str:
+    """``404`` -> ``NOT_FOUND``, ``405`` -> ``METHOD_NOT_ALLOWED`` ..."""
+    try:
+        phrase = http.HTTPStatus(status).phrase
+    except ValueError:
+        return f"HTTP_{status}"
+    return re.sub(r"[^A-Z0-9]+", "_", phrase.upper()).strip("_") or f"HTTP_{status}"
+
+
+def error_body(status: int, detail: Any, code: str | None = None) -> dict[str, str]:
+    """The documented error body. ``detail`` is always ``"CODE: text"``: a
+    detail that already starts with an upper-case code keeps it, anything
+    else (e.g. Starlette's ``"Not Found"``) gets the code of the status."""
+    text = detail if isinstance(detail, str) else str(detail)
+    if code is None:
+        m = _CODE_PREFIX.match(text)
+        if m is not None:
+            return {"detail": text, "code": m.group(1)}
+        code = _status_code_name(status)
+    if not text.startswith(f"{code}: "):
+        text = f"{code}: {text}" if text else code
+    return {"detail": text, "code": code}
+
+
+def _loc_text(loc: Any) -> str:
+    parts = [str(p) for p in (loc if isinstance(loc, (list, tuple)) else [loc])]
+    return ".".join(parts) or "request"
+
+
+def validation_error_body(errors: list[dict[str, Any]]) -> dict[str, Any]:
+    """422 body for request-validation errors.
+
+    ``errors`` keeps only ``type``, ``loc`` and ``msg`` of each pydantic
+    error: the rejected input values (``input``, ``ctx``) are never echoed
+    back, because a client may have sent something private by mistake.
+    """
+    cleaned: list[dict[str, Any]] = []
+    for err in errors[:_MAX_VALIDATION_ERRORS]:
+        loc = err.get("loc", ())
+        cleaned.append({
+            "type": str(err.get("type", "value_error")),
+            "loc": [p if isinstance(p, (int, str)) else str(p)
+                    for p in (loc if isinstance(loc, (list, tuple)) else [loc])],
+            "msg": str(err.get("msg", "invalid value"))[:_MAX_MSG_CHARS],
+        })
+    parts = [f"{_loc_text(e['loc'])}: {e['msg']}" for e in cleaned[:_SUMMARY_ERRORS]]
+    more = len(errors) - _SUMMARY_ERRORS
+    summary = "; ".join(parts) if parts else "the request is invalid"
+    if more > 0:
+        summary += f" (+{more} more)"
+    return {"detail": f"VALIDATION_ERROR: {summary}", "code": "VALIDATION_ERROR", "errors": cleaned}
+
+
+class JsonCORSMiddleware(CORSMiddleware):
+    """``CORSMiddleware`` whose refused preflight answers with the uniform
+    JSON error body instead of plain text (same status and CORS headers)."""
+
+    def preflight_response(self, request_headers: Headers) -> Response:
+        response = super().preflight_response(request_headers)
+        if response.status_code < 400:
+            return response
+        text = bytes(response.body).decode("utf-8", "replace")
+        headers = {k: v for k, v in response.headers.items() if k.lower() not in ("content-length", "content-type")}
+        return JSONResponse(error_body(response.status_code, f"{text} (preflight refused)", "CORS_REJECTED"),
+                            status_code=response.status_code, headers=headers)
 
 
 class RequestLogMiddleware:
@@ -137,7 +224,7 @@ def _install_frontend(app: FastAPI, dist: Path) -> None:
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
         if full_path == "api" or full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="NOT_FOUND: unknown API route")
+            raise OperationRefused("NOT_FOUND", "unknown API route", 404)
         if full_path:
             candidate = (root / full_path).resolve()
             # Serve only regular files that really live inside dist/ (no traversal, no symlink escape).
@@ -160,9 +247,13 @@ def create_app(
     *,
     frontend_dist: Path | None = None,
 ) -> FastAPI:
-    """Build the app. Raises ``StartupRefused`` for a disallowed bind."""
+    """Build the app. Raises ``StartupRefused`` for a disallowed bind or for a
+    ``ROOMSENSE_API_TOKEN`` that is set but unusable (on any bind address)."""
     cfg = cfg if cfg is not None else (runtime.cfg if runtime is not None else load_config())
-    token = api_token()
+    try:
+        token = api_token()
+    except ApiTokenInvalid as exc:
+        raise StartupRefused(str(exc)) from None
     check_bind_allowed(cfg, token)
     if token:
         register_secret(token)
@@ -196,10 +287,24 @@ def create_app(
     app.state.bind_host = cfg.server.host
     app.state.ws_clients = 0
 
+    # Every error answers {"detail": "CODE: text", "code": "CODE"}; request
+    # validation errors add "errors" (type/loc/msg, never the input values).
     @app.exception_handler(OperationRefused)
     async def _refused(_: Request, exc: OperationRefused) -> JSONResponse:
         return JSONResponse(status_code=exc.http_status,
                             content={"detail": f"{exc.code}: {exc.detail}", "code": exc.code})
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(_: Request, exc: StarletteHTTPException) -> Response:
+        # Framework errors (unknown route 404, 405 with its Allow header, ...).
+        headers = getattr(exc, "headers", None)
+        if exc.status_code < 200 or exc.status_code in (204, 205, 304):
+            return Response(status_code=exc.status_code, headers=headers)
+        return JSONResponse(error_body(exc.status_code, exc.detail), status_code=exc.status_code, headers=headers)
+
+    @app.exception_handler(RequestValidationError)
+    async def _invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(validation_error_body(list(exc.errors())), status_code=422)
 
     @app.exception_handler(Exception)
     async def _unexpected(request: Request, exc: Exception) -> JSONResponse:
@@ -220,7 +325,7 @@ def create_app(
     app.add_middleware(SecurityMiddleware, token=token, enforce_loopback_host=cfg.server.is_loopback(),
                        allowed_origins=list(cfg.server.cors_dev_origins))
     app.add_middleware(
-        CORSMiddleware,
+        JsonCORSMiddleware,
         allow_origins=list(cfg.server.cors_dev_origins),
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],

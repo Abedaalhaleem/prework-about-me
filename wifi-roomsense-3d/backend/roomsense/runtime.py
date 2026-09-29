@@ -37,7 +37,13 @@ Honesty rules enforced here
 * Calibrations record their source mode, hardware signature, room hash and
   config version. A baseline recorded in SIMULATION is never applied to a
   LIVE session (and the detector refuses such a mix anyway).
-* Status never presents results of a previous session.
+* Status never presents results of a previous session, nor a result older
+  than ``detection.clear_stale_after_s`` as current (``PROCESSING_STALLED``
+  stand-in with state UNKNOWN). Notes about a previous session are cleared
+  when a new source starts.
+* ``hardware_required`` is only false while a LIVE link is delivering
+  measured frames with a documented layout (see :class:`SystemStatus`).
+* Deleting a recording deletes every zone model trained on it.
 """
 
 from __future__ import annotations
@@ -48,9 +54,10 @@ import queue
 import threading
 import time
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from pydantic import ValidationError
 
@@ -97,6 +104,8 @@ from .schemas import (
     PoseStatus,
     Provenance,
     QualityFlag,
+    QualityLevel,
+    QualityReport,
     RoomGeometry,
     SourceMode,
     SourceState,
@@ -124,7 +133,7 @@ from .storage.models import (
 from .storage.recordings import (
     RecordingRefused,
     Recorder,
-    delete_recording,
+    purge_recording,
     recording_file_for_read,
 )
 from .validation.protocol import get_scenario
@@ -138,6 +147,7 @@ __all__ = [
     "THROUGH_WALL_CRITERIA_PATH",
     "OperationRefused",
     "AppRuntime",
+    "data_dir_lock",
 ]
 
 log = logging.getLogger(__name__)
@@ -255,6 +265,22 @@ class _DataDirLock:
             fh.close()
 
 
+@contextmanager
+def data_dir_lock(data_dir: Path) -> Iterator[Path]:
+    """Hold the same exclusive data-directory lock a running :class:`AppRuntime`
+    (the server) holds, for tools that change the data directory without a
+    runtime (``roomsense recordings delete|export``, ``roomsense zone-train``).
+    Raises ``OperationRefused("DATA_DIR_LOCKED", ..., 409)`` if it is held.
+    """
+    data_dir = Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    lock = _DataDirLock(data_dir)
+    try:
+        yield data_dir
+    finally:
+        lock.release()
+
+
 # ---------------------------------------------------------------------------
 # Small cache helper
 # ---------------------------------------------------------------------------
@@ -321,9 +347,12 @@ class AppRuntime:
             self._dir_lock.release()
             raise
 
-        # Locks. Order when nested: _control_lock -> _proc_lock -> _state_lock.
+        # Locks. Order when nested: _control_lock -> _files_lock -> _proc_lock -> _state_lock.
         # _q_lock and _stats_lock are leaves (nothing is acquired under them).
         self._control_lock = threading.RLock()
+        # Serialises exports with deletions, so an export can never recreate a
+        # zip of a recording that is being deleted.
+        self._files_lock = threading.Lock()
         self._proc_lock = threading.RLock()
         self._state_lock = threading.RLock()
         self._q_lock = threading.Lock()
@@ -377,7 +406,6 @@ class AppRuntime:
         self._end_of_stream: str | None = None
 
         # Runtime-lifetime state.
-        self._live_valid_frames_total = 0
         self._pending_activity: list[ActivityResult] = []
         self._activity_dropped = 0
         self._activity_errors = 0
@@ -386,7 +414,10 @@ class AppRuntime:
         self._last_recorder_check = time.monotonic()
         self._processing_errors = 0
         self._last_processing_error: str | None = None
+        # Transient: cleared when a new source/session starts (see _activate).
         self._recording_note: str | None = None
+        # Recordings a zone training in progress reads; they cannot be deleted meanwhile.
+        self._training_recordings: frozenset[str] = frozenset()
 
         self._report_cache = _Cached()
         self._pose_cache = _Cached()
@@ -636,7 +667,6 @@ class AppRuntime:
                 return
             if frame.source_mode == SourceMode.LIVE and frame.layout_id is not None:
                 self._session_live_valid_frames += 1
-                self._live_valid_frames_total += 1
             self.engine.on_event(ev)
             self.recorder.write(frame)
         elif isinstance(ev, LinkEvent):
@@ -822,6 +852,10 @@ class AppRuntime:
                                      split=s.get("split")) for s in sessions]
             except (KeyError, TypeError, DatasetError) as exc:
                 raise OperationRefused("INVALID_SESSIONS", str(exc)[:500], 422) from exc
+            # A recording deleted while it is being read would leave a model
+            # trained on deleted data; delete_recording refuses these meanwhile.
+            with self._control_lock:
+                self._training_recordings = frozenset(s.recording_id for s in specs if s.recording_id)
             try:
                 trained, binding = run_training(specs, self.cfg, self._room, data_dir=self.data_dir, db=self.db,
                                                 criteria_path=self._zone_criteria_path, registry=self.registry)
@@ -841,6 +875,7 @@ class AppRuntime:
                 "report": trained.report,
             }
         finally:
+            self._training_recordings = frozenset()
             self._train_lock.release()
 
     # ------------------------------------------------------------------ source control
@@ -864,6 +899,11 @@ class AppRuntime:
                     self._mode = mode
                     self._source_info = dict(info)
                     self._reset_session_state_locked()
+                    # Transient notes describe the previous session, not this one.
+                    self._recording_note = None
+                with self._stats_lock:
+                    self._queue_drops.clear()
+                    self._queue_drops_total = 0
                 try:
                     self.db.ensure_session(session_id, mode)
                 except (StorageError, ValueError):
@@ -1317,39 +1357,79 @@ class AppRuntime:
             return rows
         return [active if r.recording_id == active.recording_id else r for r in rows]
 
-    def delete_recording(self, recording_id: str) -> bool:
+    def delete_recording(self, recording_id: str) -> dict[str, Any]:
+        """Delete a recording and everything derived from it: file, exports,
+        DB rows, its consent record once unused, every zone model trained on
+        it, and the SQLite WAL images. Returns ``{"deleted": True,
+        "removed_models": [model ids]}``."""
         with self._control_lock:
             self._ensure_open()
+            try:
+                validate_id(recording_id, "recording_id")
+            except ValueError as exc:
+                raise OperationRefused("INVALID_ARGUMENT", str(exc), 422) from exc
             active = self.recorder.active
             if active is not None and active.recording_id == recording_id:
                 raise OperationRefused("RECORDING_ACTIVE", "stop the recording before deleting it", 409)
             if self._mode == SourceMode.REPLAY and self._source_info.get("recording_id") == recording_id:
                 raise OperationRefused("RECORDING_IN_USE", "this recording is being replayed; stop the source first",
                                        409)
-            try:
-                removed = delete_recording(self.db, self.data_dir, recording_id)
-            except RecordingRefused as exc:
-                raise _refused_from_recording(exc) from exc
-            except ValueError as exc:
-                raise OperationRefused("INVALID_ARGUMENT", str(exc), 422) from exc
-            if not removed:
+            if recording_id in self._training_recordings:
+                raise OperationRefused("RECORDING_IN_USE", "a zone model is being trained on this recording; "
+                                       "delete it after the training has finished", 409)
+            # Under the processing lock, so no zone decision from a model being
+            # removed can be stored after the predictor forgot that model.
+            with self._files_lock, self._proc_lock:
+                try:
+                    result = purge_recording(self.db, self.data_dir, recording_id, registry=self.registry)
+                except RecordingRefused as exc:  # raised before anything was deleted
+                    raise _refused_from_recording(exc) from exc
+                except (ValueError, RegistryError) as exc:
+                    self._zone_models_changed()  # models may be gone even though the file was not
+                    raise OperationRefused("INVALID_ARGUMENT", str(exc), 422) from exc
+                except BaseException:
+                    self._zone_models_changed()
+                    raise
+                if result.removed_models:
+                    self._zone_models_changed()
+                    log.info("zone models trained on a deleted recording were removed",
+                             extra={"recording_id": recording_id, "models": list(result.removed_models)})
+            if not result.deleted:
                 raise OperationRefused("RECORDING_NOT_FOUND", f"recording {recording_id} not found", 404)
             self._report_cache.clear()
-            return True
+            return {"deleted": True, "removed_models": list(result.removed_models)}
+
+    def _zone_models_changed(self) -> None:
+        """Forget cached zone models and decisions after models were removed."""
+        self.predictor.refresh()
+        self._zone_status_cache.clear()
+        with self._state_lock:
+            self._zone_pred = None  # may have come from a removed model
 
     def export_recording(self, recording_id: str) -> Path:
+        """Zip export (see :mod:`roomsense.storage.exports`). Exports count toward
+        ``storage.max_total_recording_bytes``; one that would exceed it, including
+        what an active recording may still write, is refused with ``QUOTA_EXCEEDED``."""
         try:
             validate_id(recording_id, "recording_id")
         except ValueError as exc:
             raise OperationRefused("INVALID_ARGUMENT", str(exc), 422) from exc
-        if self.db.get_recording(recording_id) is None:
-            raise OperationRefused("RECORDING_NOT_FOUND", f"recording {recording_id} not found", 404)
         try:
-            return export_recording(self.db, self.data_dir, recording_id)
+            with self._files_lock:
+                self._ensure_open()
+                if self.db.get_recording(recording_id) is None:
+                    raise OperationRefused("RECORDING_NOT_FOUND", f"recording {recording_id} not found", 404)
+                rec = self.recorder.status()
+                reserved = 0
+                if rec.get("active") and isinstance(rec.get("recording"), dict):
+                    reserved = max(0, int(rec.get("limit_bytes") or 0) - int(rec["recording"].get("bytes") or 0))
+                return export_recording(self.db, self.data_dir, recording_id,
+                                        max_total_bytes=self.cfg.storage.max_total_recording_bytes,
+                                        reserved_bytes=reserved)
         except FileNotFoundError as exc:
             raise OperationRefused("RECORDING_NOT_FOUND", str(exc)[:300], 404) from exc
         except ExportError as exc:
-            raise OperationRefused("EXPORT_REFUSED", str(exc)[:300], 409) from exc
+            raise OperationRefused(exc.code, str(exc)[:500], 409) from exc
         except (ValueError, RecordingFormatError) as exc:
             raise OperationRefused("EXPORT_REFUSED", str(exc)[:300], 422) from exc
 
@@ -1683,10 +1763,53 @@ class AppRuntime:
             return f"DISABLED: {first}" if first else "DISABLED"
         return f"ABSTAIN: {reasons[0]}" if reasons else "ABSTAIN"
 
+    @staticmethod
+    def _stalled_result(res: ActivityResult, age_s: float, limit_s: float) -> ActivityResult:
+        """Stand-in for a result that is too old to be current: UNKNOWN, no
+        score, quality UNAVAILABLE, the original provenance kept (so its
+        window and computation time stay visible)."""
+        return ActivityResult(
+            link_id=res.link_id,
+            state=ActivityState.UNKNOWN,
+            activity_score=None,
+            enter_threshold=res.enter_threshold,
+            exit_threshold=res.exit_threshold,
+            calibrated_probability=None,
+            uncertainty=None,
+            quality=QualityReport(level=QualityLevel.UNAVAILABLE, flags=["PROCESSING_STALLED"]),
+            reasons=[f"PROCESSING_STALLED: the newest result for this link was computed {age_s:.1f} s ago "
+                     f"(limit {limit_s:g} s); processing is not producing current results, so the state is "
+                     "unknown"],
+            provenance=res.provenance,
+        )
+
+    def _current_activity(self, session: str | None, now_unix_ns: int) -> tuple[list[ActivityResult], int]:
+        """The newest result per link of ``session``. A result computed longer
+        ago than ``detection.clear_stale_after_s`` (processing stalled or
+        stopped) is replaced by an UNKNOWN stand-in: an old MOTION /
+        NO_MOTION decision is never shown as current. Returns the results and
+        how many were replaced."""
+        if session is None:
+            return [], 0
+        limit_s = self.cfg.detection.clear_stale_after_s
+        out: list[ActivityResult] = []
+        stalled = 0
+        for res in self.engine.latest().values():
+            if res.provenance.session_id != session:
+                continue
+            age_s = (now_unix_ns - res.provenance.computed_at_unix_ns) / 1e9
+            if age_s > limit_s:
+                res = self._stalled_result(res, age_s, limit_s)
+                stalled += 1
+            out.append(res)
+        out.sort(key=lambda r: r.link_id)
+        return out, stalled
+
     def build_status(self) -> SystemStatus:
         """Snapshot of everything the UI shows. Cheap enough for the WS push rate."""
         self._reload_evidence()
         now_mono = self._clock()
+        now_unix = self._unix_clock()
         # One consistent view of the selected source, even during a switch.
         with self._state_lock:
             mode, session, info = self._mode, self._session_id, dict(self._source_info)
@@ -1694,10 +1817,12 @@ class AppRuntime:
         simulated = self._is_simulated(desc, mode)
         state = self.manager.source_state()
         links = self.manager.link_statuses(now_mono)
-        activity = sorted(
-            (r for r in self.engine.latest().values() if session is not None and r.provenance.session_id == session),
-            key=lambda r: r.link_id,
-        )
+        # hardware_required: see the SystemStatus docstring. Only a LIVE source
+        # whose links delivered measured frames with a documented layout
+        # within acquisition.stale_after_s clears it; replay, simulation, an
+        # unplugged board or a stale link set it again.
+        hardware_required = not (mode == SourceMode.LIVE and self.manager.live_layout_links(now_mono))
+        activity, stalled = self._current_activity(session, now_unix)
         zone_st = self.zone_status()
         zone = self._current_zone(zone_st)
         if simulated and zone.state != ZoneState.DISABLED:
@@ -1735,15 +1860,19 @@ class AppRuntime:
         )
         capabilities: list[CapabilityStatus] = build_capabilities(ctx)
         rec = self.recorder.active
+        notes = self._notes(desc, simulated, mode, info)
+        if stalled:
+            notes.append(f"PROCESSING_STALLED: {stalled} link result(s) are older than "
+                         f"{self.cfg.detection.clear_stale_after_s:g} s and are shown as UNKNOWN.")
         return SystemStatus(
-            server_time_unix_ns=self._unix_clock(),
+            server_time_unix_ns=now_unix,
             source_mode=mode,
             source_banner=SOURCE_MODE_BANNER[mode] if mode is not None else "NO SOURCE",
             simulated=simulated,
             source_state=state,
             source_detail=self._source_detail(desc, mode, info),
             session_id=session,
-            hardware_required=self._live_valid_frames_total == 0,
+            hardware_required=hardware_required,
             capabilities=capabilities,
             links=links,
             activity=activity,
@@ -1759,7 +1888,7 @@ class AppRuntime:
             recording_id=None if rec is None else rec.recording_id,
             stale_clear_timeout_s=self.cfg.detection.clear_stale_after_s,
             unsupported_capabilities=[UnsupportedCapability(**c) for c in UNSUPPORTED_CAPABILITIES],
-            notes=self._notes(desc, simulated, mode, info),
+            notes=notes,
         )
 
     def health(self, bind_host: str | None = None) -> dict[str, Any]:

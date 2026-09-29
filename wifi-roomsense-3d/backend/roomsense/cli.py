@@ -6,11 +6,11 @@ Subcommands::
     inspect-hardware read-only inspection of this computer (never opens ports)
     ports            list serial ports (never opens them)
     capture          headless LIVE recording from one configured receiver (consent required)
-    recordings       list | delete ID | export ID
+    recordings       list | delete ID | export ID  (delete/export refuse while a server uses the data folder)
     simulate         write a SIMULATED recording file (clearly flagged as synthetic)
     replay-info      summarise a recording file
     validate-report  print the through-wall validation report (JSON or Markdown)
-    zone-train       train/evaluate a zone model on labelled recordings
+    zone-train       train/evaluate a zone model on labelled recordings (refused while a server runs)
 
 Nothing here flashes, erases or reconfigures devices or routers, scans Wi-Fi,
 or needs elevated privileges.
@@ -25,6 +25,7 @@ import sys
 import threading
 import time
 from collections import Counter
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -36,6 +37,8 @@ __all__ = ["main", "build_parser"]
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_USAGE = 2
+# `capture` stops its recording itself; the recorder's duration bound is this much later.
+CAPTURE_GRACE_S = 2.0
 
 
 def _err(msg: str) -> None:
@@ -175,10 +178,16 @@ def cmd_capture(args: argparse.Namespace) -> int:
         with AppRuntime(cfg) as rt:
             try:
                 rt.start_live(rx)
+                # This command stops the recording after --seconds. The recorder's
+                # own duration bound is only a safety net (a stalled command), so it
+                # gets a grace period instead of racing the stop below; otherwise a
+                # capture of exactly the requested length could randomly end as
+                # TRUNCATED_LIMIT instead of COMPLETE.
                 info = rt.start_recording(
                     consent={"all_participants_consented": True, "participant_count": args.participants,
                              "purpose": args.purpose, "statement_version": CONSENT_STATEMENT_VERSION},
-                    label=args.label, scenario=args.scenario, notes=args.notes, max_seconds=args.seconds,
+                    label=args.label, scenario=args.scenario, notes=args.notes,
+                    max_seconds=args.seconds + CAPTURE_GRACE_S,
                 )
             except OperationRefused as exc:
                 _err(f"{exc.code}: {exc.detail}")
@@ -189,7 +198,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
             last_report = 0.0
             try:
                 while not stop.is_set() and time.monotonic() < deadline and rt.recorder.active is not None:
-                    stop.wait(0.2)
+                    stop.wait(max(0.0, min(0.2, deadline - time.monotonic())))
                     if time.monotonic() - last_report >= 5.0:
                         last_report = time.monotonic()
                         st = rt.build_status()
@@ -229,40 +238,71 @@ def _open_db(cfg: AppConfig) -> Any:
     return Database(data_dir / DB_FILENAME)
 
 
+def _lock_data_dir(cfg: AppConfig, action: str, stack: ExitStack) -> bool:
+    """Take the data-folder lock a running server holds, for commands that
+    change the data folder (it is released when ``stack`` closes). False,
+    after printing why, when it is held: a running server could be
+    replaying, recording or training on the same files."""
+    from .runtime import OperationRefused, data_dir_lock
+
+    data_dir = cfg.storage.resolved_data_dir()
+    try:
+        stack.enter_context(data_dir_lock(data_dir))
+    except OperationRefused as exc:
+        if exc.code != "DATA_DIR_LOCKED":
+            raise
+        _err(f"DATA_DIR_LOCKED: {data_dir} is in use by a running RoomSense server (or another roomsense "
+             f"command), so it cannot {action} now. Stop the server (scripts/stop.sh, Windows: "
+             "scripts\\stop.ps1) or use the UI.")
+        return False
+    return True
+
+
 def cmd_recordings(args: argparse.Namespace) -> int:
     from .storage.exports import ExportError, export_recording
-    from .storage.recordings import RecordingRefused, delete_recording
+    from .storage.recordings import RecordingRefused, purge_recording
 
     cfg = _load(args)
     data_dir = cfg.storage.resolved_data_dir()
-    with _open_db(cfg) as db:
-        if args.action == "list":
+    if args.action == "list":
+        with _open_db(cfg) as db:
             rows = db.list_recordings(limit=None)
-            if args.json:
-                _print_json([r.model_dump(mode="json") for r in rows])
-                return EXIT_OK
-            if not rows:
-                print("No recordings.")
-                return EXIT_OK
-            for r in rows:
-                created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r.created_at_unix_ns / 1e9))
-                tag = "SYNTHETIC" if r.synthetic else r.source_mode.value
-                print(f"{r.recording_id}  {created}  {tag:<10} {r.status.value:<16} {r.frames:>8} frames "
-                      f"{r.duration_s:8.1f} s  {r.label}")
+        if args.json:
+            _print_json([r.model_dump(mode="json") for r in rows])
             return EXIT_OK
+        if not rows:
+            print("No recordings.")
+            return EXIT_OK
+        for r in rows:
+            created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r.created_at_unix_ns / 1e9))
+            tag = "SYNTHETIC" if r.synthetic else r.source_mode.value
+            print(f"{r.recording_id}  {created}  {tag:<10} {r.status.value:<16} {r.frames:>8} frames "
+                  f"{r.duration_s:8.1f} s  {r.label}")
+        return EXIT_OK
+    # delete / export change the data folder: never while a server uses it.
+    with ExitStack() as stack:
+        if not _lock_data_dir(cfg, f"{args.action} recordings", stack):
+            return EXIT_FAILED
+        db = stack.enter_context(_open_db(cfg))
         try:
             if args.action == "delete":
-                if not delete_recording(db, data_dir, args.recording_id):
+                result = purge_recording(db, data_dir, args.recording_id)
+                if not result.deleted:
                     _err(f"recording {args.recording_id} not found")
                     return EXIT_FAILED
                 print(f"deleted {args.recording_id}")
+                for mid in result.removed_models:
+                    print(f"deleted zone model {mid} (it was trained on this recording)")
                 return EXIT_OK
-            path = export_recording(db, data_dir, args.recording_id)
+            path = export_recording(db, data_dir, args.recording_id,
+                                    max_total_bytes=cfg.storage.max_total_recording_bytes)
             print(path)
             return EXIT_OK
         except RecordingRefused as exc:
             _err(f"{exc.code}: {exc.detail}")
-        except (ExportError, FileNotFoundError, ValueError) as exc:
+        except ExportError as exc:
+            _err(f"{exc.code}: {exc}")
+        except (FileNotFoundError, ValueError) as exc:
             _err(str(exc))
         return EXIT_FAILED
 
@@ -447,7 +487,11 @@ def cmd_zone_train(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     cfg = _load(args)
     data_dir = cfg.storage.resolved_data_dir()
-    with _open_db(cfg) as db:
+    # Training reads recordings and writes models: never while a server uses the folder.
+    with ExitStack() as stack:
+        if not _lock_data_dir(cfg, "train a zone model", stack):
+            return EXIT_FAILED
+        db = stack.enter_context(_open_db(cfg))
         try:
             specs = [SessionSpec(label=str(s["label"]), recording_id=str(s["recording_id"]), split=s.get("split"))
                      for s in sessions]

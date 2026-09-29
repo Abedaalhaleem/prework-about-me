@@ -10,6 +10,10 @@ Rules this class enforces:
   dropped, so frames of two sessions are never mixed.
 * Per-link status (counts, measured rate, staleness, identity, clock drift)
   is derived only from events actually received.
+* :meth:`AcquisitionManager.live_layout_links` names the links of a LIVE
+  source that delivered a measured frame with a documented CSI layout within
+  ``acquisition.stale_after_s`` (and have not reported a disconnect since).
+  ``SystemStatus.hardware_required`` is derived from it.
 * Consumers are isolated: an exception in one consumer is logged and never
   propagates into a source thread. Consumers are called synchronously on the
   source's thread, one event at a time (never concurrently, even with several
@@ -26,7 +30,7 @@ from collections import deque
 from typing import Any, Callable
 
 from ..config import AppConfig
-from ..schemas import CsiFrame, LinkStatus, QualityFlag, SourceMode, SourceState
+from ..schemas import CsiFrame, InputFormat, LinkStatus, QualityFlag, SourceMode, SourceState
 from .alignment import ClockModel
 from .base import (
     CONNECTED,
@@ -54,6 +58,15 @@ _MIN_RATE_SPAN_S = 0.5
 Consumer = Callable[[SourceEvent], None]
 
 
+def _is_measured_live(frame: CsiFrame) -> bool:
+    """A LIVE frame from a receiver: not simulated, not replayed."""
+    return (frame.source_mode == SourceMode.LIVE
+            and QualityFlag.SYNTHETIC.value not in frame.quality_flags
+            and QualityFlag.REPLAYED.value not in frame.quality_flags
+            and frame.input_format != InputFormat.SYNTHETIC_V1
+            and frame.device.identity_source != "synthetic")
+
+
 class _LinkTracker:
     def __init__(self, link_id: str, receiver_id: str | None = None, transmitter_id: str | None = None) -> None:
         tx, _, rx = link_id.partition("->")
@@ -69,6 +82,8 @@ class _LinkTracker:
         self.device: dict[str, Any] | None = None
         self.first_arrival_ns: int | None = None
         self.last_arrival_ns: int | None = None
+        # Newest measured LIVE frame whose CSI layout is documented.
+        self.last_layout_arrival_ns: int | None = None
         self.arrivals: deque[int] = deque(maxlen=_MAX_ARRIVALS)
         # "unknown" until the source reports; "down" after DISCONNECTED until
         # a CONNECTED event or a newer frame arrives.
@@ -90,6 +105,9 @@ class _LinkTracker:
             self.first_arrival_ns = arrival_ns
         if self.last_arrival_ns is None or arrival_ns >= self.last_arrival_ns:
             self.last_arrival_ns = arrival_ns
+        if frame.layout_id is not None and _is_measured_live(frame) and (
+                self.last_layout_arrival_ns is None or arrival_ns >= self.last_layout_arrival_ns):
+            self.last_layout_arrival_ns = arrival_ns
         self.arrivals.append(arrival_ns)
         self.transport = "up"
         if model_clock:
@@ -237,6 +255,22 @@ class AcquisitionManager:
         with self._lock:
             stale = self.cfg.acquisition.stale_after_s
             return [self._links[k].status(now, stale) for k in sorted(self._links)]
+
+    def live_layout_links(self, now_monotonic_ns: int | None = None) -> list[str]:
+        """Links of the active LIVE source whose newest measured frame with a
+        documented CSI layout arrived at most ``acquisition.stale_after_s``
+        ago and that have not reported a disconnect since. Empty when no LIVE
+        source is active: replay and simulation never count."""
+        now = time.monotonic_ns() if now_monotonic_ns is None else now_monotonic_ns
+        with self._lock:
+            if self._source is None or self._source.mode != SourceMode.LIVE:
+                return []
+            limit_ns = int(self.cfg.acquisition.stale_after_s * 1e9)
+            return sorted(
+                lid for lid, tr in self._links.items()
+                if tr.transport != "down" and tr.last_layout_arrival_ns is not None
+                and now - tr.last_layout_arrival_ns <= limit_ns
+            )
 
     # -- event path -------------------------------------------------------
 

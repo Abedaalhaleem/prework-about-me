@@ -10,8 +10,10 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from roomsense.runtime import AppRuntime
 from roomsense.storage.models import CONSENT_STATEMENT_V1
 from tests.api_helpers import CONSENT, _no_api_token_in_env, api_client, make_cfg  # noqa: F401  (autouse fixture)
+from tests.zone_helpers import passing_report, save_fake_model
 
 
 def _start_sim(c: TestClient) -> dict[str, Any]:
@@ -93,7 +95,7 @@ def test_record_list_export_delete(tmp_path: Path) -> None:
         path = cfg.storage.resolved_data_dir() / "recordings" / f"{rid}.jsonl.gz"
         assert path.is_file()
         r = c.delete(f"/api/recordings/{rid}")
-        assert r.status_code == 200 and r.json() == {"deleted": True}
+        assert r.status_code == 200 and r.json() == {"deleted": True, "removed_models": []}
         assert not path.exists()
         assert not list((cfg.storage.resolved_data_dir() / "exports").glob(f"{rid}*"))
         assert c.get("/api/recordings").json() == []
@@ -124,6 +126,11 @@ def test_recording_stops_at_max_seconds_and_says_so(tmp_path: Path) -> None:
         st = c.get("/api/status").json()
         assert st["recording_active"] is False
         assert any(n.startswith("RECORDING_STOPPED") and "TRUNCATED_LIMIT" in n for n in st["notes"])
+        assert any(n.startswith("RECORDING_STOPPED") for n in c.post("/api/source/stop").json()["notes"])
+        # The note described the previous session: a new source starts without it.
+        st = _start_sim(c)
+        assert not any(n.startswith("RECORDING_STOPPED") for n in st["notes"])
+        assert not any(n.startswith("RECORDING_STOPPED") for n in c.get("/api/status").json()["notes"])
 
 
 def test_labelled_events(tmp_path: Path) -> None:
@@ -141,3 +148,50 @@ def test_labelled_events(tmp_path: Path) -> None:
         assert [e["kind"] for e in events] == ["START", "END"]
         assert c.get("/api/events", params={"session_id": "other_session"}).json() == []
         assert c.post("/api/events", json={"label": "  ", "kind": "MARK"}).status_code == 422
+
+
+def test_delete_removes_zone_models_trained_on_the_recording(tmp_path: Path) -> None:
+    """A zone model trained on data the user deletes must not survive it."""
+    cfg = make_cfg(tmp_path)
+    rt = AppRuntime(cfg)
+    with api_client(cfg, rt) as c:
+        _start_sim(c)
+        gone = _record(c, 0.4)["recording_id"]
+        kept_rec = _record(c, 0.4)["recording_id"]
+        c.post("/api/source/stop")
+
+        def report(*rids: str) -> dict[str, Any]:
+            return {**passing_report(), "dataset": {"sessions": [{"session_key": r, "recording_id": r} for r in rids]},
+                    "splits": {"assignment": {r: "train" for r in rids}}}
+
+        kept = save_fake_model(rt.registry, report=report(kept_rec), created_at_unix_ns=1)
+        trained = save_fake_model(rt.registry, report=report(gone, kept_rec), created_at_unix_ns=2)
+        rt.predictor.refresh()
+        rt._zone_status_cache.clear()
+        assert c.get("/api/zone/status").json()["report"]["model_id"] == trained.model_id  # newest model
+
+        # While a zone model is being trained on the recording it cannot be deleted.
+        rt._training_recordings = frozenset({gone})
+        r = c.delete(f"/api/recordings/{gone}")
+        assert r.status_code == 409 and r.json()["code"] == "RECORDING_IN_USE"
+        rt._training_recordings = frozenset()
+
+        r = c.delete(f"/api/recordings/{gone}")
+        assert r.status_code == 200 and r.json() == {"deleted": True, "removed_models": [trained.model_id]}
+        assert [b.model_id for b in rt.registry.list_bindings()[0]] == [kept.model_id]
+        assert rt.db.get_zone_model(trained.model_id) is None and rt.db.get_zone_model(kept.model_id) is not None
+        # The predictor forgot the removed model at once.
+        assert c.get("/api/zone/status").json()["report"]["model_id"] == kept.model_id
+        assert [x["recording_id"] for x in c.get("/api/recordings").json()] == [kept_rec]
+
+
+def test_export_refused_when_it_would_exceed_the_storage_quota(tmp_path: Path) -> None:
+    # A tiny quota: the recording itself stops at the quota, and its export would exceed it.
+    with api_client(make_cfg(tmp_path, storage={"max_total_recording_bytes": 50_000})) as c:
+        _start_sim(c)
+        rid = _record(c, 0.8)["recording_id"]
+        r = c.get(f"/api/recordings/{rid}/export")
+        assert r.status_code == 409 and r.json()["code"] == "QUOTA_EXCEEDED"
+        assert "max_total_recording_bytes" in r.json()["detail"]
+        exports = make_cfg(tmp_path).storage.resolved_data_dir() / "exports"
+        assert not exports.exists() or not any(exports.iterdir())

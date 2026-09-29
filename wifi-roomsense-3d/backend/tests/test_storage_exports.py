@@ -122,12 +122,39 @@ def test_reexport_replaces_previous_export_only_for_that_recording(env) -> None:
     assert not any(p.name.endswith(".partial") for p in (data_dir / "exports").iterdir())
 
 
+def test_exports_count_toward_the_storage_quota(env) -> None:
+    db, data_dir, rec = env
+    info = _record(rec, db, n=20)
+    recording_bytes = recording_path(data_dir, info.recording_id).stat().st_size
+    exports = data_dir / "exports"
+    # Far too little room: refused with a clear code, nothing written.
+    with pytest.raises(ExportError) as ei:
+        export_recording(db, data_dir, info.recording_id, max_total_bytes=recording_bytes + 1000)
+    assert ei.value.code == "QUOTA_EXCEEDED" and "max_total_recording_bytes" in str(ei.value)
+    assert not exports.exists() or not any(exports.iterdir())
+    # Enough room for one export.
+    quota = recording_bytes * 2 + 200_000
+    first = export_recording(db, data_dir, info.recording_id, max_total_bytes=quota, now_ns=T0)
+    zip_bytes = first.stat().st_size
+    assert zip_bytes <= recording_bytes + 100_000
+    # A re-export replaces the older zip, so it only needs room for the difference.
+    second = export_recording(db, data_dir, info.recording_id, max_total_bytes=quota, now_ns=T0 + 1)
+    assert second.exists() and not first.exists()
+    # What an active recording may still write is reserved.
+    with pytest.raises(ExportError) as ei:
+        export_recording(db, data_dir, info.recording_id, max_total_bytes=quota, reserved_bytes=quota)
+    assert ei.value.code == "QUOTA_EXCEEDED" and "reserved for the active recording" in str(ei.value)
+    assert second.exists()  # the refused export changed nothing
+    assert not any(p.name.endswith(".partial") for p in exports.iterdir())
+
+
 def test_export_refusals(env, tmp_path: Path) -> None:
     db, data_dir, rec = env
     with pytest.raises(ValueError):
         export_recording(db, data_dir, "../etc")
-    with pytest.raises(ExportError, match="not found"):
+    with pytest.raises(ExportError, match="not found") as ei:
         export_recording(db, data_dir, "rec_missing")
+    assert ei.value.code == "EXPORT_REFUSED"
     active = rec.start(consent=make_consent(), label="x", session_id="sess_live", source_mode=SourceMode.LIVE)
     with pytest.raises(ExportError, match="stop"):
         export_recording(db, data_dir, active.recording_id)

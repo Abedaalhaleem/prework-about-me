@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from ..acquisition.serial_source import list_serial_ports
 from ..acquisition.synthetic import builtin_scenarios
 from ..capabilities import UNSUPPORTED_CAPABILITIES
-from ..runtime import AppRuntime
+from ..runtime import AppRuntime, OperationRefused
 from ..schemas import CapabilityStatus, PoseStatus, SystemStatus, UnsupportedCapability
 from .deps import get_runtime
 from .ws import websocket_support_available
@@ -57,7 +57,7 @@ def serial_ports() -> list[dict[str, Any]]:
     try:
         return list_serial_ports()
     except Exception as exc:  # pyserial backends can fail on unusual systems
-        raise HTTPException(status_code=503, detail=f"SERIAL_ENUMERATION_FAILED: {type(exc).__name__}") from exc
+        raise OperationRefused("SERIAL_ENUMERATION_FAILED", type(exc).__name__, 503) from exc
 
 
 @router.get("/simulation/scenarios")

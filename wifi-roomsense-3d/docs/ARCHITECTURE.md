@@ -177,11 +177,13 @@ class ProcessingEngine:
 ### `roomsense/storage/`, `roomsense/inference/zone/`, `roomsense/validation/`
 
 ```python
-# storage/db.py (sqlite3, WAL, schema migrations table)
+# storage/db.py (sqlite3, WAL, secure_delete=ON, schema migrations table)
 class Database:
     def __init__(self, path: Path): ...;  def close(self) -> None
     # sessions, recordings, consents, calibrations(+baselines json), events (labels), activity_log,
     # validation_runs, zone_models, room_versions: add_*/get_*/list_*/delete_* methods
+    def delete_recording(self, recording_id) -> bool   # + its label events + its consent once no recording uses it
+    def checkpoint(self, mode: str = "TRUNCATE") -> tuple[int, int, int]   # PRAGMA wal_checkpoint: (busy, log, done)
 # storage/recordings.py
 class Recorder:   # opt-in; refuses to start without a consent record; bounded bytes/seconds/total quota
     def start(self, *, consent: ConsentRecord, label: str, scenario: str | None, session_id: str,
@@ -189,15 +191,26 @@ class Recorder:   # opt-in; refuses to start without a consent record; bounded b
     def write(self, frame: CsiFrame) -> None   # thread-safe; auto-stops at limits with status TRUNCATED_LIMIT
     def stop(self) -> RecordingInfo | None
 def iter_recording(path: Path) -> Iterator[CsiFrame]
-def delete_recording(db, data_dir, recording_id) -> bool
+def quota_used_bytes(data_dir) -> int   # recordings + export zips (incl. .partial): what max_total_recording_bytes limits
+def purge_recording(db, data_dir, recording_id, *, registry=None) -> RecordingDeletion
+    # RecordingDeletion(recording_id, deleted, removed_models: tuple[str, ...], wal_checkpoint_complete)
+    # removes: zone models trained on it (first), the file, its exports and hidden .partial exports,
+    # the DB rows (recording, label events, consent once unused), then wal_checkpoint(TRUNCATE)
+def delete_recording(db, data_dir, recording_id) -> bool   # purge_recording(...).deleted
 # storage/exports.py
-def export_recording(db, data_dir, recording_id) -> Path   # zip: manifest.json, frames.jsonl.gz, events.csv, PROVENANCE.txt
+def export_recording(db, data_dir, recording_id, *, now_ns=None, max_total_bytes=None, reserved_bytes=0) -> Path
+    # zip: manifest.json, frames.jsonl.gz, events.csv, PROVENANCE.txt. With max_total_bytes the export is refused
+    # (ExportError.code == "QUOTA_EXCEEDED") if recordings + exports + this zip (minus the export it replaces)
+    # + reserved_bytes (what an active recording may still write) would exceed it. Other refusals: "EXPORT_REFUSED".
 
 # inference/zone/criteria.py  -- loads configs/zone_enablement.toml (hashed => criteria_version)
 # inference/zone/dataset.py   -- recordings -> per-window feature matrices, labels, session ids (via replay through the same pipeline)
 # inference/zone/train.py     -- session-level splits; fit scaler/selection on train only; tune abstention on validation; test once
 # inference/zone/evaluate.py  -- counts, class balance, confusion matrix, per-zone errors, abstention, later-session performance
 # inference/zone/predictor.py -- ZonePredictor.predict(features_by_link, room_hash, hw_signature) -> ZonePrediction (DISABLED/ABSTAIN/ESTIMATE)
+# inference/zone/registry.py  -- ZoneModelRegistry(data_dir, db).save/load/list_bindings/delete;
+#                                models_trained_on(recording_id) / delete_models_trained_on(recording_id) -> [model ids]
+#                                (read from each model's report: dataset.sessions[].recording_id and the split assignment)
 
 # validation/metrics.py -- false alarms/hour (+exact Poisson CI), event recall (+Wilson CI), latency, missed events
 # validation/protocol.py -- the through-wall scenario list
@@ -214,43 +227,91 @@ def build_capabilities(ctx: CapabilityContext) -> list[CapabilityStatus]
 
 ## HTTP API (FastAPI, bound to 127.0.0.1 by default)
 
-A non-loopback bind requires the `ROOMSENSE_API_TOKEN` environment variable.
-Every `/api/*` request must then send `Authorization: Bearer <token>`.
+Access rules (`roomsense/api/security.py`, `roomsense/api/app.py`):
+
+* **Bind and token.** A non-loopback bind requires `server.allow_non_loopback = true`
+  *and* the `ROOMSENSE_API_TOKEN` environment variable. When a token is configured (on any
+  bind address), every `/api/*` request must send `Authorization: Bearer <token>`
+  (401 `UNAUTHORIZED` otherwise) and the WebSocket must present it (see "WebSocket auth"
+  below). A `ROOMSENSE_API_TOKEN` that is **set but unusable** (empty, whitespace only,
+  shorter than 16 characters, or containing whitespace, control or non-ASCII characters)
+  makes the server refuse to start on **every** bind address, loopback included
+  (`StartupRefused`; `roomsense serve` exits with code 2). The token is never printed or
+  logged, and never read from query strings.
+* **Host header (DNS rebinding).** While bound to loopback, a request whose `Host` is not
+  a loopback name (`127.0.0.1`, `localhost`, `::1`, with any port) gets **421**
+  `HOST_NOT_ALLOWED` (WebSocket: close 1008).
+* **Origin.** WebSocket handshakes and `POST`/`PUT`/`PATCH`/`DELETE` requests that carry a
+  foreign `Origin` are refused: **403** `ORIGIN_NOT_ALLOWED` (WebSocket: close **1008**).
+  Allowed origins are the server itself (the `Origin` authority equals the `Host` header,
+  same host:port) and `server.cors_dev_origins` (the Vite dev server). `null` origins and
+  non-HTTP schemes are refused. Requests without `Origin` (curl, the CLI, scripts) are
+  unaffected; the token rule still applies. Implemented in
+  `roomsense.api.security.origin_allowed` and `SecurityMiddleware`.
+* **CORS** is allowed only for `server.cors_dev_origins`; a refused preflight answers 400
+  `CORS_REJECTED`.
+* **OpenAPI.** `/api/openapi.json` is served. The interactive docs (`/docs`, `/redoc`) are
+  disabled, because they load scripts from a CDN and this app makes no external requests.
+* **Literal-true acknowledgements.** `acknowledge_simulated`, `confirm_room_empty` and
+  `consent.all_participants_consented` are strict booleans: only JSON `true` counts. Any
+  other type (`"true"`, `1`, `"yes"`) is a 422 `VALIDATION_ERROR`; `false` or a missing
+  optional flag is refused by the runtime with an explanation
+  (`SIMULATION_NOT_ACKNOWLEDGED`, `ROOM_NOT_CONFIRMED_EMPTY`, `CONSENT_INVALID`, all 422).
+* **Receivers sent over HTTP.** `POST /api/source/live` with a `receivers` body may only
+  name ports that are configured in `[[acquisition.receivers]]` or currently listed by
+  `GET /api/serial/ports`; any other port is 422 `PORT_NOT_AVAILABLE`, so the API cannot
+  open arbitrary device files. Ports are never guessed.
+
+**Error body.** Every error response is JSON
+`{"detail": "CODE: human text", "code": "CODE"}` (match on `code`, or on the `detail`
+prefix). That covers runtime refusals (`OperationRefused`), route errors
+(`PORT_NOT_AVAILABLE`, `SERIAL_ENUMERATION_FAILED`, 503 `NOT_READY` while the runtime starts
+or stops), framework errors (404 `NOT_FOUND`, 405 `METHOD_NOT_ALLOWED` with its `Allow`
+header), security refusals (401/403/421) and 500 `INTERNAL_ERROR` (exception type only).
+Request-validation errors (422) are
+`{"detail": "VALIDATION_ERROR: <field path>: <message>; ... (+n more)", "code": "VALIDATION_ERROR",
+"errors": [{type, loc, msg}, ...]}`; field paths look like `body.consent.participant_count`
+or `query.seconds`, and the rejected input values are never echoed back.
 
 | Method | Path | Body → Response |
 |---|---|---|
-| GET | `/api/health` | `{status, version, schema_version, uptime_s, source_state, bind_host}` |
+| GET | `/api/health` | `{status, version, schema_version, uptime_s, source_state, bind_host, websocket_support}` (`websocket_support` is false when uvicorn has no WebSocket library, i.e. `/api/ws` cannot be served) |
 | GET | `/api/status` | `SystemStatus` |
 | WS | `/api/ws` | pushes `{"type":"status","data":SystemStatus}` at `websocket_push_hz`, plus `{"type":"signal","link_id":..,"data":SignalSnapshot}` for each link |
-| GET | `/api/signal?link_id=&seconds=60` | `SignalSnapshot` |
-| GET | `/api/serial/ports` | `[{device, description, hwid, vid, pid, likely_usb_uart_bridge}]` |
-| POST | `/api/source/live` | `{receivers?: ReceiverConfig[]}` → `SystemStatus` (409 if the receivers are not configured) |
-| POST | `/api/source/replay` | `{recording_id, speed?}` → `SystemStatus` |
-| POST | `/api/source/simulation` | `{scenario, seed?, acknowledge_simulated: true}` → `SystemStatus` (422 without the acknowledgement) |
+| GET | `/api/signal?link_id=&seconds=60` | `SignalSnapshot` (404 `NO_SOURCE` / `UNKNOWN_LINK`) |
+| GET | `/api/capabilities` | `CapabilityStatus[]` (A, B, C, D; same as `SystemStatus.capabilities`) |
+| GET | `/api/capabilities/unsupported` | `UnsupportedCapability[]` `{id, claim, reason}` (claims the app never makes) |
+| GET | `/api/serial/ports` | `[{device, description, hwid, vid, pid, likely_usb_uart_bridge}]` (listed, never opened; 503 `SERIAL_ENUMERATION_FAILED`) |
+| GET | `/api/source/receivers` | the configured receivers: `[{receiver_id, port, baud, input_format, transmitter_id, transmitter_mac, declared_chip, declared_board, ltf_config, link_id}]` (exactly these keys; nothing else from the config) |
+| POST | `/api/source/live` | `{receivers?: ReceiverConfig[]}` → `SystemStatus` (409 `NO_RECEIVERS_CONFIGURED`; 422 `PORT_NOT_AVAILABLE`, see above) |
+| POST | `/api/source/replay` | `{recording_id, speed?}` → `SystemStatus` (404 `RECORDING_NOT_FOUND`, 409 `RECORDING_ACTIVE`) |
+| POST | `/api/source/simulation` | `{scenario, seed?, acknowledge_simulated: true}` → `SystemStatus` (422 `SIMULATION_NOT_ACKNOWLEDGED` without the acknowledgement) |
 | POST | `/api/source/stop` | → `SystemStatus` |
-| GET | `/api/simulation/scenarios` | `[{name, duration_s, description}]` |
-| GET | `/api/calibration` | `{active, history, in_progress}` |
+| GET | `/api/simulation/scenarios` | `[{name, duration_s, description, rate_hz, links, simulated: true}]` |
+| GET | `/api/calibration` | `{active, history, in_progress, walk_test_active, last_walk_test, note}` |
 | POST | `/api/calibration/baseline/start` | `{link_ids?, confirm_room_empty: true}` |
 | POST | `/api/calibration/baseline/stop` | → `CalibrationRecord` (valid or rejected with reasons) |
-| POST | `/api/calibration/baseline/cancel` | |
-| POST | `/api/calibration/walk-test/start` / `stop` | → `WalkTestReport` |
-| POST | `/api/calibration/invalidate` | `{reason}` |
+| POST | `/api/calibration/baseline/cancel` | → `{cancelled}` |
+| POST | `/api/calibration/walk-test/start` / `stop` | `{link_ids?}` → `{started, note}` / `WalkTestReport` |
+| POST | `/api/calibration/invalidate` | `{reason}` → `{invalidated, reason}` |
 | GET | `/api/room` | `RoomGeometry` (the EXAMPLE room if the user has not provided one) |
 | PUT | `/api/room` | `RoomGeometry` (the provenance is forced to USER_PROVIDED) → `{room, invalidated}` |
 | GET | `/api/room/example` | EXAMPLE `RoomGeometry` |
 | GET | `/api/recordings` | `RecordingInfo[]` |
-| POST | `/api/recordings/start` | `{consent:{all_participants_consented:true, participant_count, purpose, statement_version}, label, scenario?, notes?, max_seconds?}` |
+| GET | `/api/recordings/consent-statement` | `{version, text}`: the statement the UI shows; the server fills it into the consent record |
+| POST | `/api/recordings/start` | `{consent:{all_participants_consented:true, participant_count, purpose, statement_version}, label, scenario?, notes?, max_seconds?}` → `RecordingInfo` (409 `QUOTA_EXCEEDED` once recordings + exports reach `max_total_recording_bytes`) |
 | POST | `/api/recordings/stop` | → `RecordingInfo` |
-| DELETE | `/api/recordings/{id}` | → `{deleted:true}` |
-| GET | `/api/recordings/{id}/export` | zip download |
-| GET/POST | `/api/events` | labelled events `{label, kind: MARK/START/END, t_unix_ns?, notes?}` |
+| DELETE | `/api/recordings/{id}` | → `{deleted: true, removed_models: [model_id, ...]}`: deletes the file, its exports (and hidden `.partial` leftovers), its label events, its consent record once no other recording uses it, and **every zone model trained on it** (files + DB rows, listed in `removed_models`), then truncates the SQLite WAL. 409 `RECORDING_ACTIVE` / `RECORDING_IN_USE` (being replayed, or being read by a zone training), 404 `RECORDING_NOT_FOUND` |
+| GET | `/api/recordings/{id}/export` | zip download. Exports count toward `max_total_recording_bytes`; 409 `QUOTA_EXCEEDED` if this one would exceed it (what an active recording may still write is reserved), 409 `EXPORT_REFUSED` otherwise |
+| GET/POST | `/api/events` | labelled events `{label, kind: MARK/START/END, t_unix_ns?, notes?}` (GET: `?session_id=&limit=`) |
 | GET | `/api/validation/protocol` | scenario list |
-| POST | `/api/validation/runs`, `/api/validation/runs/{id}/stop` | start/stop a validation run with placement metadata |
+| GET | `/api/validation/runs` | `ValidationRun[]` |
+| POST | `/api/validation/runs`, `/api/validation/runs/{id}/stop` | start/stop a validation run with placement metadata → `ValidationRun` |
 | GET | `/api/validation/report` | JSON report (`/api/validation/report.md` for markdown) |
-| GET | `/api/zone/status` | `{state, reasons, criteria, report?}` |
+| GET | `/api/zone/status` | `{state, reasons, model_id, criteria_version, criteria, report}` |
 | POST | `/api/zone/train` | `{sessions:[{recording_id, label, split?}]}` → training/evaluation report (the model is only enabled if the criteria pass) |
 | GET | `/api/pose/status` | `PoseStatus` |
-| GET | `/api/hardware` | hardware inspection JSON (non-destructive) |
+| GET | `/api/hardware?refresh=true` | hardware inspection JSON (non-destructive) with `cache_age_s`; cached ~30 s, `refresh=true` re-inspects; 503 `HARDWARE_MODULE_UNAVAILABLE`, never made-up data |
 
 `SignalSnapshot` (timestamps in Unix **milliseconds**; `null` marks gaps, which the UI must not bridge):
 
@@ -266,6 +327,68 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
   "gaps": [{"start": .., "end": ..}]
 }
 ```
+
+## Runtime contract (`roomsense/runtime.py`)
+
+```python
+class OperationRefused(Exception):     # the API answers {"detail": "CODE: detail", "code": code} with http_status
+    def __init__(self, code: str, detail: str, http_status: int = 409): ...
+class AppRuntime:                      # owns DB, manager, engine, recorder, zone predictor, pose gate, room
+    def __init__(self, cfg: AppConfig, *, serial_factory=None, clock=None, background_processing=True): ...
+    def start(self) -> None            # idempotent; crash recovery, then the processing thread
+    def shutdown(self) -> None         # idempotent: stop source (closes ports), finalise recording, stop thread, close DB
+    def pump(self, max_events=None) -> int   # background_processing=False only: process queued events now
+    # start_live/start_replay/start_simulation/stop_source, calibration, recordings, events, validation,
+    # zone training, build_status() -> SystemStatus; every public method is thread-safe
+@contextmanager
+def data_dir_lock(data_dir: Path) -> Iterator[Path]   # the same lock, for tools that run without a runtime
+```
+
+* **Data folder.** The metadata database is `<storage.data_dir>/roomsense.sqlite3`
+  (default `data/roomsense.sqlite3`); recordings are `data/recordings/<id>.jsonl.gz`,
+  exports `data/exports/`, zone models `data/models/`. One process per data folder: the
+  runtime holds an exclusive lock on `data/.roomsense.lock` for its lifetime. A second
+  runtime (a second server, `roomsense capture`) is refused with **409 `DATA_DIR_LOCKED`**;
+  `roomsense recordings delete|export` and `roomsense zone-train` take the same lock and
+  refuse while a server runs ("stop the server or use the UI", exit code 1).
+  `roomsense recordings list` and `validate-report` only read and do not need it.
+* **Crash recovery.** On `start()`, validation runs left `RUNNING` by a crashed process become
+  `ABORTED` with zero duration (they never count as evidence) and sessions without an end
+  are closed. Recordings left `RECORDING` are marked `ERROR` (interrupted) when the runtime's
+  recorder is constructed.
+* **Host queue policy.** The acquisition consumer only enqueues into a bounded queue
+  (`acquisition.frame_queue_size`). A LIVE source never waits: when the queue is full the
+  newest event is dropped and counted per link (`HOST_QUEUE_DROPS` note). Replay and
+  simulation wait up to 1 s (`NON_LIVE_PUT_TIMEOUT_S`) for space before dropping and
+  counting in the same way. Nothing is dropped silently.
+* **Processing cadence.** One processing thread drains the queue and calls
+  `ProcessingEngine.step()` whenever the processing clock (host clock, or the newest data
+  timestamp when a non-realtime simulation runs ahead) advanced by `0.05 * hop_s`
+  (`STEP_FRACTION`), i.e. every 0.05·hop_s of data time.
+* **`SystemStatus.hardware_required`** = NOT (the active source is LIVE AND at least one
+  live link has delivered measured frames with a documented CSI layout within
+  `acquisition.stale_after_s` and has not reported a disconnect since;
+  `AcquisitionManager.live_layout_links()`). It is true with no source, under replay and
+  simulation, before the first documented frame, and again after a board is unplugged. It
+  is not sticky for the process.
+* **Stale results.** `SystemStatus.activity` shows the newest result per link of the
+  current session only. A result whose `provenance.computed_at_unix_ns` is older than
+  `detection.clear_stale_after_s` (processing stalled or stopped) is replaced by state
+  `UNKNOWN`, reason `PROCESSING_STALLED: ...`, no score, quality `UNAVAILABLE`, with its
+  original provenance; a `PROCESSING_STALLED` note says how many. An old MOTION /
+  NO_MOTION decision is never shown as current. (Keep `hop_s` well below
+  `clear_stale_after_s`.)
+* **Notes.** Notes about a session (`RECORDING_STOPPED`, `HOST_QUEUE_DROPS`,
+  `END_OF_STREAM`, `FRAMES_REJECTED_SOURCE_MISMATCH`) are cleared when a new source or session
+  starts. Runtime-health notes (`PROCESSING_ERRORS`, `PROCESSING_STOPPED`,
+  `ACTIVITY_LOG_INCOMPLETE`) and configuration notes (`ROOM_EXAMPLE`, evidence errors) stay.
+* **Simulated data.** `SystemStatus.simulated` and `CapabilityContext.simulated` are true for
+  SIMULATION and for a REPLAY of simulated data. For such a replay `source_banner` stays
+  `"RECORDED REPLAY"` while `simulated` is true, and the UI shows both (the replay banner
+  and the SIMULATED DATA banner). Capability texts never call simulated data "recorded
+  measurements", and zone output stays DISABLED.
+* **Deleting a recording** also deletes every zone model trained on it and refuses
+  (`RECORDING_IN_USE`) while it is replayed or read by a zone training in progress.
 
 ## Conventions settled during implementation
 
@@ -292,13 +415,16 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
   at a time. The runtime therefore puts events on its own bounded queue, sized by
   `acquisition.frame_queue_size`, and processes them on a single processing thread.
 * If that queue ever overflows, the dropped events are **counted and reported**
-  (link status and notes), never dropped silently.
+  (`HOST_QUEUE_DROPS` notes), never dropped silently. A live source drops the newest event
+  at once; replay and simulation wait up to 1 s first (see "Runtime contract").
 
 ### Simulated flag
 
 * `SystemStatus.simulated` is true when the active source mode is `SIMULATION`.
 * It is also true when `active.describe()["simulated"]` is true. That covers a REPLAY of
-  a simulated recording, and a recording of such a replay.
+  a simulated recording, and a recording of such a replay. `source_banner` then stays
+  `"RECORDED REPLAY"`; the UI shows it together with the SIMULATED DATA banner.
+* `CapabilityContext.simulated` carries the same value into the capability builder.
 
 ### `SignalSnapshot`
 
@@ -317,7 +443,9 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
 * **Synthetic:** `with_seed(scenario, seed)`; `SyntheticScenario.{description, node_positions, room_size_m, zones, params}`;
   `SYNTHETIC_ZONES`; `zone_session_scenario(label, *, seed, duration_s=60, links=None, rate_hz=25, environment_seed=...)`;
   `generate_frames(..., start_unix_ns=None, start_monotonic_ns=None)`.
-* **Manager:** `.mode`, `.detail`, `.remove_consumer()`.
+* **Manager:** `.mode`, `.detail`, `.remove_consumer()`, `.live_layout_links(now_ns=None) -> list[str]`
+  (links of the active LIVE source with a measured, documented-layout frame within
+  `stale_after_s` and no disconnect since; backs `hardware_required`).
 * **Replay:** `original_is_synthetic(path)`.
 * **Processing:** `ProcessingEngine(cfg, *, clock_ns, clock_unix_ns)`; `start_walk_test(link_ids=None)`; `stop_walk_test()`
   returns `{link_id: {max_score, motion_window_fraction, windows, motion_windows, undecided_windows, offline_windows, detected, reasons}}`;
