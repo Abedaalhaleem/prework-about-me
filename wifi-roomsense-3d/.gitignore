@@ -1,0 +1,29 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/tsconfig*.tsbuildinfo
+
+# Local runtime data (recordings, database, room, logs) stay on this machine
+data/*
+!data/README.md
+logs/
+*.pid
+
+# Local configuration (copy from configs/roomsense.example.toml)
+configs/roomsense.toml
+
+# ESP-IDF build outputs and local configuration (may contain Wi-Fi credentials)
+firmware/esp32/**/build/
+firmware/esp32/**/sdkconfig
+firmware/esp32/**/sdkconfig.old
+firmware/esp32/**/managed_components/
+firmware/esp32/host_tests/build/
+
+.DS_Store
