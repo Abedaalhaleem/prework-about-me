@@ -49,7 +49,7 @@
       }
     },
     "C_ZONE": {
-      "software_tested": false,
+      "software_tested": true,
       "firmware_compiled": false,
       "hardware_tested": false,
       "through_wall_validated": false,

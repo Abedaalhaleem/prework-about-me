@@ -47,16 +47,25 @@ from ...schemas import (
     ZonePrediction,
     ZoneState,
 )
-from .criteria import NON_ZONE_LABELS, current_criteria_version, default_criteria_path
+from .criteria import (
+    NON_ZONE_LABELS,
+    CriteriaError,
+    current_criteria_version,
+    default_criteria_path,
+    load_criteria,
+)
 from .dataset import feature_names_for, feature_row
 from .registry import ModelBinding, RegistryError, ZoneModelRegistry
 
 __all__ = [
     "NOT_READY_STATES",
+    "STATUS_ENABLED",
     "ZonePredictor",
     "runtime_inputs",
 ]
 
+# status() vocabulary matches CapabilityState: ENABLED or DISABLED.
+STATUS_ENABLED = "ENABLED"
 NOT_READY_STATES = frozenset({ActivityState.UNKNOWN, ActivityState.SENSOR_OFFLINE, ActivityState.CALIBRATING})
 _LOW_QUALITY = frozenset({QualityLevel.BAD, QualityLevel.UNAVAILABLE})
 _EXPERIMENTAL_NOTE = (
@@ -65,14 +74,17 @@ _EXPERIMENTAL_NOTE = (
 )
 
 
-def runtime_inputs(engine: Any, link_order: Sequence[str]
+def runtime_inputs(engine: Any, link_order: Sequence[str] | None = None
                    ) -> tuple[dict[str, FeatureVector], dict[str, ActivityState], dict[str, QualityLevel]]:
     """Collect predictor inputs from a :class:`ProcessingEngine`.
 
-    A link's newest feature vector is only used if it belongs to the same
-    window as the link's newest activity result, so features and state never
-    describe different moments.
+    ``link_order`` defaults to every link the engine knows; the predictor
+    picks the links its model needs. A link's newest feature vector is only
+    used if it belongs to the same window as the link's newest activity
+    result, so features and state never describe different moments.
     """
+    if link_order is None:
+        link_order = engine.link_ids()
     latest: Mapping[str, ActivityResult] = engine.latest()
     feats: dict[str, FeatureVector] = {}
     states: dict[str, ActivityState] = {}
@@ -235,8 +247,19 @@ class ZonePredictor:
         config_version: str | None,
         criteria_version: str | None = None,
     ) -> dict[str, Any]:
-        """``{state: DISABLED|READY, reasons, model_id, criteria_version, report}``."""
-        crit = criteria_version if criteria_version is not None else current_criteria_version(self._criteria_path)
+        """``{state, reasons, model_id, criteria_version, criteria, report}`` for ``/api/zone/status``.
+
+        ``state`` is ``ENABLED`` when a model passed its criteria and still
+        matches this context (individual windows may still ABSTAIN), else
+        ``DISABLED``. ``criteria`` is the parsed criteria file (``None`` if it
+        cannot be loaded); ``report`` is the selected (or newest) model's report.
+        """
+        try:
+            criteria: dict[str, Any] | None = load_criteria(self._criteria_path).to_dict()
+        except CriteriaError:
+            criteria = None
+        crit = criteria_version if criteria_version is not None else (
+            None if criteria is None else criteria["criteria_version"])
         with self._lock:
             b, reasons = self._select(room_hash=room_hash, hardware_signature=hardware_signature,
                                       config_version=config_version, criteria_version=crit)
@@ -244,12 +267,12 @@ class ZonePredictor:
                 _, problems = self._pipeline(b)
                 if problems:
                     return {"state": ZoneState.DISABLED.value, "reasons": problems, "model_id": b.model_id,
-                            "criteria_version": crit, "report": b.report}
-                return {"state": "READY", "reasons": [_EXPERIMENTAL_NOTE], "model_id": b.model_id,
-                        "criteria_version": crit, "report": b.report}
+                            "criteria_version": crit, "criteria": criteria, "report": b.report}
+                return {"state": STATUS_ENABLED, "reasons": [_EXPERIMENTAL_NOTE], "model_id": b.model_id,
+                        "criteria_version": crit, "criteria": criteria, "report": b.report}
             newest = self._bindings[0] if self._bindings else None
             return {"state": ZoneState.DISABLED.value, "reasons": reasons,
-                    "model_id": None, "criteria_version": crit,
+                    "model_id": None, "criteria_version": crit, "criteria": criteria,
                     "report": None if newest is None else newest.report}
 
     # -------------------------------------------------------------- predict

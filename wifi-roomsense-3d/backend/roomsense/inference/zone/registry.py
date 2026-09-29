@@ -244,7 +244,13 @@ class ZoneModelRegistry:
             # Model file first: a JSON without its model is never listed as loadable.
             self._atomic_write(pm, blob)
             self._atomic_write(pj, text)
-            self._record_db(binding)
+            try:
+                self._record_db(binding)
+            except Exception:
+                # Keep files and DB consistent: no model without its row.
+                for p in (pj, pm):
+                    p.unlink(missing_ok=True)
+                raise
             return binding
 
     def _record_db(self, b: ModelBinding) -> None:

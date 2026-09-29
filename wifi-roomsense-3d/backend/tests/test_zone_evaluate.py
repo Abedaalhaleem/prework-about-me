@@ -115,7 +115,8 @@ def test_sweep_matches_decide():
     s = onehot(["A", "B", "EMPTY", "B"], conf=0.7)
     s[3] = [0.45, 0.55, 0.0, 0.0]
     sweep = abstention_sweep(s, y, CLASSES, [0.0, 0.6])
-    assert sweep[0]["abstained"] == 0 and sweep[0]["balanced_accuracy_non_abstained"] == pytest.approx((0.5 + 1 + 1) / 3)
+    assert sweep[0]["abstained"] == 0
+    assert sweep[0]["balanced_accuracy_non_abstained"] == pytest.approx((0.5 + 1 + 1) / 3)
     assert sweep[1]["abstained"] == 1 and sweep[1]["balanced_accuracy_non_abstained"] == 1.0
 
 

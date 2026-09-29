@@ -242,7 +242,8 @@ def train_and_evaluate(
     plan = plan if plan is not None else plan_splits(dataset.sessions, classes, criteria)
     keys = {s.session_key for s in dataset.sessions}
     if set(plan.assignment) != keys or any(v not in SPLITS for v in plan.assignment.values()):
-        raise TrainingRefused("INVALID_SPLITS", "every session must be assigned to exactly one of train/validation/test")
+        raise TrainingRefused("INVALID_SPLITS",
+                              "every session must be assigned to exactly one of train/validation/test")
 
     split_of = np.asarray([plan.assignment[k] for k in dataset.session_ids.tolist()], dtype=object)
     masks = {sp: split_of == sp for sp in SPLITS}
@@ -250,7 +251,8 @@ def train_and_evaluate(
     y = dataset.y.astype(object)
     train_classes = sorted(set(y[train_m].tolist()))
     if len(train_classes) < 2:
-        raise TrainingRefused("INSUFFICIENT_TRAINING_DATA", f"training windows cover {train_classes}; need >= 2 classes")
+        raise TrainingRefused("INSUFFICIENT_TRAINING_DATA",
+                              f"training windows cover {train_classes}; need >= 2 classes")
     missing_train = [c for c in classes if c not in train_classes]
     if missing_train:
         raise TrainingRefused("INSUFFICIENT_TRAINING_DATA", f"no training windows for classes {missing_train}")

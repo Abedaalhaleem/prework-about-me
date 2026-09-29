@@ -71,6 +71,7 @@ from ...processing.features import FEATURE_NAMES, FeatureVector, extract_feature
 from ...processing.pipeline import ProcessingEngine
 from ...processing.quality import assess_quality
 from ...processing.windows import Window, WindowRejection, build_window
+from ...recording_format import RecordingFormatError
 from ...schemas import CsiFrame, InputFormat, QualityFlag, QualityLevel, SourceMode
 
 __all__ = [
@@ -667,7 +668,12 @@ def build_dataset(
         if bad:
             raise DatasetError(f"unknown label(s) {bad}; allowed: {sorted(allowed_labels)}")
 
-    processed = [_process_session(s, cfg, trim_s=trim_session_edges_s, data_dir=data_dir, db=db) for s in specs]
+    processed: list[_Processed] = []
+    for spec in specs:
+        try:
+            processed.append(_process_session(spec, cfg, trim_s=trim_session_edges_s, data_dir=data_dir, db=db))
+        except RecordingFormatError as exc:
+            raise DatasetError(f"session {spec.key}: unreadable recording: {exc}") from exc
 
     if link_order is None:
         link_sets = {tuple(p.summary.link_ids_seen) for p in processed}

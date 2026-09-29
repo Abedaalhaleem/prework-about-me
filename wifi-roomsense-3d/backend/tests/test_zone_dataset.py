@@ -202,6 +202,11 @@ def test_recorded_session_is_read_from_the_data_dir(tmp_path):
         assert any("metadata" in r for r in s.synthetic_reasons)
         with pytest.raises(DatasetError, match="data_dir"):
             build_dataset([spec], CFG, trim_session_edges_s=TRIM_S)
+        bad = data_dir / "recordings" / "rec_corrupt.jsonl.gz"
+        bad.write_bytes(b"not gzip at all")
+        with pytest.raises(DatasetError, match="rec_corrupt"):
+            build_dataset([SessionSpec(label="C", recording_id="rec_corrupt")], CFG, trim_session_edges_s=TRIM_S,
+                          data_dir=data_dir)
         with pytest.raises(DatasetError, match="not found"):
             build_dataset([SessionSpec(label="C", recording_id="rec_missing")], CFG, trim_session_edges_s=TRIM_S,
                           data_dir=data_dir)
