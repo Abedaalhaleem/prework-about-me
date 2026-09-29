@@ -21,8 +21,9 @@ Windowing (per session)
   not used (device clocks of different receivers are unrelated).
 * Grid: ``T_n = t_first + trim + window_s + n * hop_s``, where ``t_first`` is
   the session's first accepted sample. A grid point is processed once data
-  at least ``ORDERING_SLACK_S`` newer has arrived, so small cross-link
-  interleaving differences do not matter.
+  at least ``max(ORDERING_SLACK_S, trim)`` newer has arrived (capped at
+  ``MAX_EVALUATION_LAG_S``), so small cross-link interleaving differences do
+  not matter and trimmed tail windows are never computed.
 * For every required link: ``build_window(end_ns=T)``. The grid point is
   excluded if any link has no window, a rejected window, quality ``BAD`` or
   ``UNAVAILABLE``, unusable features, or if the links' window ends are not
@@ -79,6 +80,7 @@ __all__ = [
     "LOG_FLOOR",
     "MIN_USABLE_SUBCARRIERS",
     "ORDERING_SLACK_S",
+    "MAX_EVALUATION_LAG_S",
     "MAX_GRID_POINTS_PER_SESSION",
     "SPLIT_TRAIN",
     "SPLIT_VALIDATION",
@@ -110,6 +112,8 @@ PER_SUBCARRIER_KEYS: tuple[tuple[str, str], ...] = (("amp_cv_median", "amp_cv"),
 LOG_FLOOR = 1e-6
 MIN_USABLE_SUBCARRIERS = 4
 ORDERING_SLACK_S = 1.0
+# (lag + 2 * window_s) at the 1000 Hz config maximum stays below MAX_BUFFERED_SAMPLES.
+MAX_EVALUATION_LAG_S = 10.0
 MAX_GRID_POINTS_PER_SESSION = 200_000
 # Per-link sample buffer cap (frames). Time pruning keeps far fewer; the cap
 # only bounds memory if a link delivers at an absurd rate.
@@ -384,7 +388,11 @@ class _SessionWindower:
         self.window_ns = int(round(pcfg.window_s * 1e9))
         self.hop_ns = int(round(pcfg.hop_s * 1e9))
         self.trim_ns = int(round(trim_s * 1e9))
-        self.slack_ns = int(round(ORDERING_SLACK_S * 1e9))
+        # Evaluate a grid point only once newer data proves it is not inside
+        # the trimmed tail, so no work is spent on windows that would be
+        # dropped. Capped so the buffers stay small for very long trims; a
+        # point that is trimmed after all is simply discarded at the end.
+        self.slack_ns = int(round(min(max(ORDERING_SLACK_S, trim_s), MAX_EVALUATION_LAG_S) * 1e9))
         self.links: dict[str, _LinkBuffer] = {}
         self.t_first: int | None = None
         self.t_last: int | None = None
@@ -398,7 +406,12 @@ class _SessionWindower:
         return buf
 
     def add_sample(self, link_id: str, sample: AmplitudeSample) -> None:
-        self._buf(link_id).samples.append(sample)
+        buf = self._buf(link_id)
+        if len(buf.samples) == MAX_BUFFERED_SAMPLES:
+            # A full deque would silently drop samples a window still needs.
+            raise DatasetError(f"link {link_id} delivers more than {MAX_BUFFERED_SAMPLES} frames within "
+                               f"{MAX_EVALUATION_LAG_S + 2 * self.pcfg.window_s:g} s; refusing to window it")
+        buf.samples.append(sample)
         if self.t_first is None:
             self.t_first = sample.t_ns
             self.next_t = sample.t_ns + self.trim_ns + self.window_ns
@@ -411,7 +424,7 @@ class _SessionWindower:
     def _advance(self, *, final: bool) -> None:
         if self.next_t is None or self.t_last is None:
             return
-        limit = self.t_last if final else self.t_last - self.slack_ns
+        limit = self.t_last - (self.trim_ns if final else self.slack_ns)
         while self.next_t <= limit:
             if len(self.points) >= MAX_GRID_POINTS_PER_SESSION:
                 raise DatasetError(
@@ -471,6 +484,22 @@ def _frame_unix(frame: CsiFrame) -> int | None:
     if frame.recorded_host_arrival_unix_ns is not None:
         return int(frame.recorded_host_arrival_unix_ns)
     return None if frame.host_arrival_unix_ns is None else int(frame.host_arrival_unix_ns)
+
+
+def _identity_key(frame: CsiFrame, out: AmplitudeSample | FrameRejection) -> tuple[Any, ...]:
+    """Everything the engine's per-link identity (and its session reset) reads."""
+    layout = out.layout_id if isinstance(out, AmplitudeSample) else None
+    return (
+        frame.session_id,
+        SourceMode(frame.source_mode).value,
+        frame.device.chip,
+        frame.device.firmware_name,
+        frame.device.firmware_version,
+        frame.channel,
+        frame.secondary_channel,
+        layout,
+        frame.transmitter_mac,
+    )
 
 
 @contextlib.contextmanager
@@ -534,6 +563,7 @@ def _process_session(spec: SessionSpec, cfg: AppConfig, *, trim_s: float, data_d
     last_unix: int | None = None
     n_total = n_rej = n_dev = 0
     synthetic_frame_seen = False
+    last_identity: dict[str, tuple[Any, ...]] = {}
 
     with _open_frames(spec, data_dir, db) as (frames, meta):
         synthetic_reasons += meta["synthetic_reasons"]
@@ -550,8 +580,16 @@ def _process_session(spec: SessionSpec, cfg: AppConfig, *, trim_s: float, data_d
             if unix is not None:
                 first_unix = unix if first_unix is None else min(first_unix, unix)
                 last_unix = unix if last_unix is None else max(last_unix, unix)
-            signature_engine.on_event(FrameEvent(frame))
             out = convert_frame(frame, pcfg)
+            # The engine's identity merge is idempotent for a repeated identical
+            # identity ("not reported is not a change", pipeline.py), so only
+            # frames whose identity key changes need to reach it. That gives the
+            # exact runtime hardware_signature() without converting every frame
+            # twice.
+            ident = _identity_key(frame, out)
+            if last_identity.get(frame.link_id) != ident:
+                last_identity[frame.link_id] = ident
+                signature_engine.on_event(FrameEvent(frame))
             if isinstance(out, FrameRejection):
                 n_rej += 1
                 rejections[out.reason] += 1
