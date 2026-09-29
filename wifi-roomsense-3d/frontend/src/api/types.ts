@@ -407,6 +407,25 @@ export interface ReceiverConfig {
   allow_undocumented_layout_assumption?: boolean;
 }
 
+/**
+ * GET /api/source/receivers: one receiver configured in configs/roomsense.toml
+ * (no secrets). Optional fields are null when not configured. Older backends
+ * do not have this endpoint (404); see lib/sourceControls.ts.
+ */
+export interface ConfiguredReceiver {
+  receiver_id: string;
+  port: string;
+  baud: number | null;
+  input_format: string | null;
+  transmitter_id: string | null;
+  transmitter_mac: string | null;
+  declared_chip: string | null;
+  declared_board: string | null;
+  ltf_config: string | null;
+  /** "<transmitter_id>-><receiver_id>" */
+  link_id: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // HTTP API payloads (docs/ARCHITECTURE.md "HTTP API")
 // ---------------------------------------------------------------------------

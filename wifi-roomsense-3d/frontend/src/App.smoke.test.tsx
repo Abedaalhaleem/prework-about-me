@@ -103,6 +103,86 @@ describe('App smoke (jsdom)', () => {
     expect(text()).toContain('3-D view unavailable');
   });
 
+  it('labels simulated links in the Source card as simulated, never as a connected board', () => {
+    const list = container.querySelector('.origin-list')?.textContent ?? '';
+    expect(list).toContain('simulated link — no board');
+    expect(list).not.toMatch(/\bconnected\b/);
+    expect(text()).not.toContain('Receivers reported by the backend');
+  });
+
+  it('keeps the header compact: facts always visible, explanations behind one summary line', () => {
+    const facts = container.querySelector('.status-facts')?.textContent ?? '';
+    expect(facts).toContain('Calibration: NOT VALID');
+    expect(facts).toContain('Localization');
+    expect(facts).toContain('25.0 Hz');
+    expect(facts).toContain('quality GOOD');
+    expect(facts).toContain('Enabled now: none');
+    expect(facts).not.toContain('Unsupported: none');
+    const summary = container.querySelector('.status-more > summary')?.textContent ?? '';
+    expect(summary).toContain('Through-wall: UNVERIFIED');
+    expect(summary).toContain('Operating scope');
+    const more = container.querySelector('details.status-more') as HTMLDetailsElement | null;
+    expect(more?.open).toBe(false);
+  });
+
+  it('shows RECORDED REPLAY and the SIMULATED banner for a replay of simulated data, without a warning', async () => {
+    const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1] as FakeWebSocket;
+    const status = makeStatus({
+      simulated: true,
+      source_mode: 'REPLAY',
+      source_banner: 'RECORDED REPLAY',
+      source_state: 'FINISHED',
+      links: [makeLink('tx1->rx1', { connected: false })],
+    });
+    await act(async () => {
+      ws.serverPush({ type: 'status', data: status });
+    });
+    expect(container.querySelector('.source-pill__text')?.textContent).toBe('RECORDED REPLAY');
+    expect(container.querySelector('.source-pill__origin')?.textContent).toBe('SIMULATED DATA');
+    expect(container.querySelector('.sim-banner')?.textContent).toContain('SIMULATED DATA — NOT A MEASUREMENT');
+    expect(container.querySelector('.sim-watermark')).not.toBeNull();
+    expect(container.querySelector('.status-header__warning')).toBeNull();
+    expect(text()).not.toContain('SIMULATION FINISHED');
+    expect(container.querySelector('.origin-list')?.textContent).toContain('replayed link — simulated data, no board');
+  });
+
+  it('says NO SOURCE once and disables Stop source when nothing runs', async () => {
+    const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1] as FakeWebSocket;
+    await act(async () => {
+      ws.serverPush({
+        type: 'status',
+        data: makeStatus({ source_mode: null, source_banner: 'NO SOURCE', source_state: 'NO_SOURCE', session_id: null }),
+      });
+    });
+    const pill = container.querySelector('.source-pill')?.textContent ?? '';
+    expect(pill).toBe('NO SOURCE');
+    const stop = [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Stop source');
+    expect(stop?.disabled).toBe(true);
+    // The configured receivers could not be listed (fetch fails here): unknown, so Start live stays enabled.
+    const start = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent === 'Start live (configured receivers)',
+    );
+    expect(start?.disabled).toBe(false);
+    expect(text()).toContain('Could not list the configured receivers');
+  });
+
+  it('never shows a green LIVE pill while the live source is disconnected', async () => {
+    const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1] as FakeWebSocket;
+    await act(async () => {
+      ws.serverPush({
+        type: 'status',
+        data: makeStatus({ source_state: 'DISCONNECTED', links: [makeLink('tx1->rx1', { connected: false, last_frame_age_s: 40 })] }),
+      });
+    });
+    const pill = container.querySelector('.source-pill');
+    expect(pill?.className).toContain('source-pill--live-down');
+    expect(pill?.className).not.toMatch(/source-pill--live(\s|$)/);
+    expect(pill?.textContent).toBe('LIVE MEASUREMENTS— DISCONNECTED (no data)');
+    expect(container.querySelector('.origin-list')?.textContent).toContain('not connected');
+    const stop = [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Stop source');
+    expect(stop?.disabled).toBe(false);
+  });
+
   it('labels a live status LIVE MEASUREMENTS without the simulated banner', async () => {
     const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1] as FakeWebSocket;
     await act(async () => {

@@ -136,23 +136,24 @@ a {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: center;
-  gap: 4px 18px;
-  padding: 12px 16px;
+  gap: 2px 18px;
+  padding: 6px 16px;
   background: var(--sim-yellow);
   color: var(--sim-black);
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-image: repeating-linear-gradient(-45deg, var(--sim-black) 0 14px, var(--sim-yellow) 14px 28px) 8;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-image: repeating-linear-gradient(-45deg, var(--sim-black) 0 14px, var(--sim-yellow) 14px 28px) 7;
   text-align: center;
 }
 .sim-banner__text {
   font-size: clamp(1.25rem, 2.6vw, 2rem);
+  line-height: 1.2;
   font-weight: 900;
   letter-spacing: 0.04em;
 }
 .sim-banner__sub {
-  font-weight: 600;
-  font-size: 0.95rem;
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
 .offline-banner {
@@ -221,10 +222,38 @@ a {
   opacity: 0.9;
   letter-spacing: 0.02em;
 }
+.source-pill--live-down .source-pill__state,
+.source-pill--live-degraded .source-pill__state {
+  font-weight: 800;
+  opacity: 1;
+}
+/* "SIMULATED DATA" inside a RECORDED REPLAY pill. */
+.source-pill__origin {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--sim-yellow);
+  color: var(--sim-black);
+}
 .source-pill--live {
   border-color: var(--ok);
   color: #b2f2bb;
   background: rgba(81, 207, 102, 0.12);
+}
+/* LIVE selected, but only some links deliver data. */
+.source-pill--live-degraded {
+  border-color: var(--warn);
+  color: #ffec99;
+  background: rgba(252, 196, 25, 0.12);
+}
+/* LIVE selected, but no data: disconnected, error, connecting, no connected link. */
+.source-pill--live-down {
+  border-color: var(--bad);
+  border-style: dashed;
+  color: #ffc9c9;
+  background: rgba(255, 107, 107, 0.14);
 }
 .source-pill--replay {
   border-color: var(--info);
@@ -411,43 +440,126 @@ a {
   opacity: 1;
 }
 
-/* details bar under the sticky header */
+/* details bar under the sticky header: compact, every line always visible
+   except the body of the expandable summary line */
 .status-details-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 8px 16px 10px;
-  font-size: 0.84rem;
+  padding: 5px 16px 6px;
+  font-size: 0.8rem;
+}
+.status-details-bar__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
 }
 .status-header__source-detail {
   color: var(--text-2);
-  margin-bottom: 4px;
 }
 .status-header__warning {
   color: var(--warn);
-  margin-bottom: 4px;
+  font-weight: 650;
 }
-.status-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 6px 18px;
-}
-.status-details__group {
+.status-facts {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 22px;
+}
+.status-facts__item {
+  display: inline-flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 8px;
+  gap: 2px 8px;
+  min-width: 0;
 }
-.status-details__group--scope {
-  grid-column: 1 / -1;
-}
-.status-details__label {
-  font-size: 0.72rem;
+.status-facts__label {
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
-.status-details__text {
+.status-facts__text {
   color: var(--text-2);
+}
+.status-facts__code {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: #ffec99;
+}
+
+.status-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  min-width: 0;
+}
+.status-more > summary::-webkit-details-marker {
+  display: none;
+}
+.status-more__scope {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+.status-more__claims {
+  flex: none;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.status-more__toggle {
+  flex: none;
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+.status-more__toggle::after {
+  content: '▸ show details';
+}
+.status-more[open] .status-more__toggle::after {
+  content: '▾ hide details';
+}
+.status-more > summary:hover .status-more__toggle {
+  text-decoration: underline;
+}
+.status-more__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 8px 22px;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.status-more__body dt {
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.status-more__body dd {
+  margin: 0;
+  color: var(--text-2);
+}
+.status-more__wide {
+  grid-column: 1 / -1;
+}
+.status-more__claims-list {
+  margin: 0;
+  padding-left: 16px;
+  columns: 3 280px;
+  column-gap: 28px;
+}
+.status-more__claims-list li {
+  break-inside: avoid;
+  margin-bottom: 4px;
 }
 .pill {
   display: inline-block;
@@ -482,7 +594,8 @@ a {
 }
 .link-rate {
   display: inline-flex;
-  gap: 8px;
+  align-items: baseline;
+  gap: 6px;
 }
 .link-rate__rate {
   font-family: var(--mono);
@@ -632,6 +745,40 @@ a {
 .plain-list {
   list-style: none;
   padding-left: 0;
+}
+.origin-list li,
+.receiver-list li {
+  padding: 2px 0;
+  font-size: 0.88rem;
+}
+.origin {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+}
+.origin--ok {
+  border-color: var(--ok);
+  color: #b2f2bb;
+}
+.origin--warn {
+  border-color: var(--warn);
+  color: #ffec99;
+}
+.origin--sim {
+  border-color: var(--sim-yellow);
+  background: var(--sim-yellow);
+  color: var(--sim-black);
+}
+.origin--replay {
+  border-color: var(--info);
+  color: #d0ebff;
+}
+.origin--muted {
+  color: var(--muted);
 }
 
 /* ------------------------------------------------------------ notices & kv */
@@ -983,9 +1130,23 @@ legend {
   color: #ffec99;
   border-color: rgba(255, 212, 59, 0.6);
 }
+/* Zone labels are context, not measurements: smaller, dimmer, and wrapped
+   so they fit inside narrow zones. */
 .scene-label--zone {
-  color: #bac8ff;
-  background: rgba(11, 15, 20, 0.55);
+  font-size: 10px;
+  line-height: 1.15;
+  padding: 1px 5px;
+  max-width: 104px;
+  white-space: normal;
+  text-align: center;
+  color: #a5b4e6;
+  background: rgba(11, 15, 20, 0.5);
+  border-color: rgba(154, 166, 182, 0.2);
+  opacity: 0.85;
+}
+/* Hidden by the declutter pass (no free spot); still measured, never shown. */
+.scene-label--culled {
+  visibility: hidden;
 }
 .scene-label--tx {
   border-color: #c678dd;
@@ -1149,6 +1310,9 @@ legend {
   font-family: var(--mono);
   white-space: nowrap;
 }
+.redraw-rate__culled {
+  color: var(--text-2);
+}
 
 .room-view__legend {
   display: flex;
@@ -1271,6 +1435,9 @@ legend {
   font-family: var(--mono);
   font-size: 0.8rem;
   overflow-wrap: anywhere;
+}
+.link-card__grid dd.age-stale {
+  color: var(--warn);
 }
 .link-card__reasons {
   margin: 6px 0 0;

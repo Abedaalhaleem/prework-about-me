@@ -11,6 +11,13 @@
  *    passed every gate (see lib/zone.ts). Its centre is a display anchor.
  *  - The render loop only redraws what the caller set. It never animates,
  *    smooths or extrapolates measurements.
+ *  - Labels are decluttered in screen space after every redraw (see
+ *    lib/declutter.ts): node labels first, then link labels, then the
+ *    target-room, zone and compass labels, which are nudged, or hidden when
+ *    there is no free spot. Node glyphs are kept uncovered, a link label
+ *    only slides along its own line and a zone label never leaves its own
+ *    zone, so a moved label cannot be read as naming something else. Moving
+ *    a label never moves what it names.
  *
  * Coordinates: backend x east / y north / z up -> three.js (x, z, -y),
  * see lib/coords.ts.
@@ -25,6 +32,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 
 import type { NodeRole, RoomGeometry, SensorNode, Vec2, Wall, Zone } from '../api/types';
 import { polygonCentroid, roomBounds, toThree, wallLength, wallSpans } from '../lib/coords';
+import { type LabelBox, type Offset, type Point, type Rect, declutterLabels } from '../lib/declutter';
 import type { LinkDisplayState } from '../lib/freshness';
 import { linkStyle } from '../lib/linkStyle';
 
@@ -62,6 +70,36 @@ const COLORS = {
 
 const NODE_COLOR: Record<NodeRole, number> = { TX: COLORS.tx, RX: COLORS.rx, ROUTER: COLORS.router };
 
+/** Half the on-screen extent of each node glyph, metres: node labels sit just above it. */
+const NODE_GLYPH_RADIUS_M: Record<NodeRole, number> = { TX: 0.16, RX: 0.16, ROUTER: 0.21 };
+
+/** Declutter order and whether a label may be hidden when there is no free spot. */
+type LabelKind = 'estimate' | 'node' | 'link' | 'target' | 'zone' | 'compass';
+const LABEL_RULES: Record<LabelKind, { priority: number; hideable: boolean }> = {
+  estimate: { priority: 0, hideable: false }, // estimated zone + its "not measured" disclaimers
+  node: { priority: 1, hideable: false },
+  link: { priority: 2, hideable: false },
+  target: { priority: 3, hideable: true },
+  zone: { priority: 4, hideable: true },
+  compass: { priority: 5, hideable: true },
+};
+/** Points along a link line (fraction of TX -> RX) a link label may slide to, nearest to the middle first. */
+const LINK_LABEL_SLIDES = [0.45, 0.55, 0.4, 0.6, 0.35, 0.65, 0.3, 0.7, 0.25, 0.75, 0.2, 0.8, 0.15, 0.85];
+const LABEL_GAP_PX = 3;
+const CULLED_CLASS = 'scene-label--culled';
+
+interface LabelMeta {
+  kind: LabelKind;
+  /** Node labels: glyph radius in metres; the label's home is just above the glyph on screen. */
+  liftM?: number;
+  /** Link labels: world end points, so the label can slide along its own line. */
+  along?: [THREE.Vector3, THREE.Vector3];
+  /** Zone labels: the zone outline at the label's height; a moved label stays inside it. */
+  zonePoly?: THREE.Vector3[];
+  /** Offset chosen in the previous declutter pass (null = was hidden / never placed). */
+  prev: Offset | null;
+}
+
 interface LinkEntry {
   line: Line2;
   material: LineMaterial;
@@ -70,11 +108,18 @@ interface LinkEntry {
   text: string;
 }
 
-function makeLabel(text: string, className: string): { obj: CSS2DObject; el: HTMLDivElement } {
+function makeLabel(
+  text: string,
+  className: string,
+  kind: LabelKind,
+  extra: Omit<LabelMeta, 'kind' | 'prev'> = {},
+): { obj: CSS2DObject; el: HTMLDivElement } {
   const el = document.createElement('div');
   el.className = `scene-label ${className}`;
   el.textContent = text;
   const obj = new CSS2DObject(el);
+  const meta: LabelMeta = { kind, prev: null, ...extra };
+  obj.userData.label = meta;
   return { obj, el };
 }
 
@@ -147,7 +192,17 @@ export class RoomScene {
   private fpsWindowStart = performance.now();
   private onRenderRate: ((perSecond: number) => void) | null = null;
 
+  private readonly container: HTMLElement;
+  private labelObstacles: readonly HTMLElement[] = [];
+  private onLabelsCulled: ((hidden: number) => void) | null = null;
+  private culledCount = -1;
+  private readonly viewProj = new THREE.Matrix4();
+  private readonly tmpA = new THREE.Vector3();
+  private readonly tmpB = new THREE.Vector3();
+  private readonly tmpC = new THREE.Vector3();
+
   constructor(container: HTMLElement) {
+    this.container = container;
     // May throw when WebGL is unavailable; RoomView catches and says so.
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -181,6 +236,27 @@ export class RoomScene {
   /** Called with the number of redraws per second (display only). */
   setRenderRateListener(fn: ((perSecond: number) => void) | null): void {
     this.onRenderRate = fn;
+  }
+
+  /** Called with the number of labels hidden to avoid overlaps, whenever it changes. */
+  setLabelCullListener(fn: ((hidden: number) => void) | null): void {
+    this.onLabelsCulled = fn;
+    this.culledCount = -1;
+    this.dirty = true;
+  }
+
+  /**
+   * Overlay elements drawn on top of the view (geometry label, footer notes).
+   * Labels are kept off them. Call invalidateLabels() when they change size.
+   */
+  setLabelObstacles(elements: readonly HTMLElement[]): void {
+    this.labelObstacles = elements;
+    this.dirty = true;
+  }
+
+  /** Re-run label placement on the next frame. */
+  invalidateLabels(): void {
+    this.dirty = true;
   }
 
   // ---------------------------------------------------------------- setup
@@ -326,7 +402,7 @@ export class RoomScene {
 
     // North marker at the far (north) edge.
     const [nx, , nz] = toThree({ x: (minX + maxX) / 2, y: maxY });
-    const north = makeLabel('N ↑ (grid 1 m)', 'scene-label--compass');
+    const north = makeLabel('N ↑ (grid 1 m)', 'scene-label--compass', 'compass');
     north.obj.position.set(nx, 0.05, nz);
     this.roomGroup.add(north.obj);
 
@@ -389,7 +465,7 @@ export class RoomScene {
     this.roomGroup.add(loop);
     const first = pts[0];
     if (first) {
-      const label = makeLabel('Target room', 'scene-label--target');
+      const label = makeLabel('Target room', 'scene-label--target', 'target');
       label.obj.position.set(first.x, 0.1, first.z);
       this.roomGroup.add(label.obj);
     }
@@ -415,7 +491,9 @@ export class RoomScene {
     const c = polygonCentroid(zone.polygon);
     if (c) {
       const [x, , z] = toThree(c);
-      const label = makeLabel(outside ? `${zone.label} (outside target room)` : zone.label, 'scene-label--zone');
+      const label = makeLabel(outside ? `${zone.label} (outside target room)` : zone.label, 'scene-label--zone', 'zone', {
+        zonePoly: floorLoop(zone.polygon, 0.05),
+      });
       label.obj.position.set(x, 0.05, z);
       this.roomGroup.add(label.obj);
     }
@@ -450,8 +528,13 @@ export class RoomScene {
       this.roomGroup.add(pole);
     }
     const where = node.inside_target_room === null ? '' : node.inside_target_room ? ' · inside' : ' · outside';
-    const label = makeLabel(`${node.role} ${node.label}${where}`, `scene-label--node scene-label--${node.role.toLowerCase()}`);
-    label.obj.position.set(x, y + 0.28, z);
+    // Anchored at the node itself; the declutter pass puts the label just
+    // above the glyph in screen space, so it never covers the glyph (also in
+    // the top-down view, where a world-space lift would collapse to nothing).
+    const label = makeLabel(`${node.role} ${node.label}${where}`, `scene-label--node scene-label--${node.role.toLowerCase()}`, 'node', {
+      liftM: NODE_GLYPH_RADIUS_M[node.role] ?? 0.16,
+    });
+    label.obj.position.set(x, y, z);
     this.roomGroup.add(label.obj);
   }
 
@@ -496,8 +579,10 @@ export class RoomScene {
       const line = new Line2(geom, material);
       line.computeLineDistances();
       this.linkGroup.add(line);
-      const { obj, el } = makeLabel(def.link_id, 'scene-label--link');
-      obj.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.12, (a[2] + b[2]) / 2);
+      const { obj, el } = makeLabel(def.link_id, 'scene-label--link', 'link', {
+        along: [new THREE.Vector3(...a), new THREE.Vector3(...b)],
+      });
+      obj.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
       this.linkGroup.add(obj);
       this.links.set(def.link_id, { line, material, labelEl: el, state: null, text: '' });
     });
@@ -523,7 +608,8 @@ export class RoomScene {
         entry.material.dashed = st.dashed;
         entry.material.opacity = st.opacity;
         entry.material.needsUpdate = true;
-        entry.labelEl.className = `scene-label scene-label--link scene-label--state-${state.toLowerCase()}`;
+        if (entry.state) entry.labelEl.classList.remove(`scene-label--state-${entry.state.toLowerCase()}`);
+        entry.labelEl.classList.add(`scene-label--state-${state.toLowerCase()}`);
         entry.state = state;
         this.dirty = true;
       }
@@ -585,7 +671,10 @@ export class RoomScene {
       note.textContent = 'Zone centre is a display anchor, not a measured position.';
       el.append(title, note);
       const obj = new CSS2DObject(el);
-      obj.position.set(x, this.extrude ? 1.35 : 0.3, z);
+      const labelY = this.extrude ? 1.35 : 0.3;
+      const meta: LabelMeta = { kind: 'estimate', prev: null, zonePoly: floorLoop(zone.polygon, labelY) };
+      obj.userData.label = meta;
+      obj.position.set(x, labelY, z);
       this.highlightGroup.add(obj);
     }
 
@@ -600,7 +689,7 @@ export class RoomScene {
       this.highlightGroup.add(prism);
       if (c) {
         const [x, , z] = toThree(c);
-        const lbl = makeLabel('Visualization only — not measured height', 'scene-label--decorative');
+        const lbl = makeLabel('Visualization only — not measured height', 'scene-label--decorative', 'estimate');
         lbl.obj.position.set(x, 0.75, z);
         this.highlightGroup.add(lbl.obj);
       }
@@ -618,6 +707,7 @@ export class RoomScene {
       this.dirty = false;
       this.renderer.render(this.scene, this.camera);
       this.labelRenderer.render(this.scene, this.camera);
+      this.declutter();
       this.renderCount++;
     }
     const now = performance.now();
@@ -627,6 +717,163 @@ export class RoomScene {
       this.fpsWindowStart = now;
     }
   };
+
+  // ---------------------------------------------------------------- labels
+
+  /** Screen position (CSS px in the view) of a world point, or null behind the camera. */
+  private project(world: THREE.Vector3, out: THREE.Vector3): { x: number; y: number } | null {
+    out.copy(world).applyMatrix4(this.viewProj);
+    if (!(out.z >= -1 && out.z <= 1)) return null;
+    return { x: (out.x + 1) * (this.width / 2), y: (1 - out.y) * (this.height / 2) };
+  }
+
+  /** On-screen pixels per metre at a world point (works for both cameras). */
+  private pxPerMetre(world: THREE.Vector3, at: { x: number; y: number }): number {
+    const right = this.tmpB.set(1, 0, 0).applyQuaternion(this.camera.quaternion).add(world);
+    const p = this.project(right, this.tmpB);
+    return p ? Math.hypot(p.x - at.x, p.y - at.y) : 0;
+  }
+
+  private obstacleRects(): Rect[] {
+    if (this.labelObstacles.length === 0) return [];
+    const base = this.container.getBoundingClientRect();
+    const out: Rect[] = [];
+    for (const el of this.labelObstacles) {
+      if (!el.isConnected) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      out.push({ left: r.left - base.left, top: r.top - base.top, right: r.right - base.left, bottom: r.bottom - base.top });
+    }
+    return out;
+  }
+
+  /**
+   * Runs right after labelRenderer.render(): measures every visible label,
+   * projects its anchor the same way CSS2DRenderer does, and overrides the
+   * transform with the decluttered position (or hides the label).
+   */
+  private declutter(): void {
+    this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    const items: { el: HTMLElement; meta: LabelMeta; box: LabelBox }[] = [];
+    const glyphs: Rect[] = []; // node glyphs stay uncovered
+    const world = new THREE.Vector3();
+    this.scene.traverse((o) => {
+      if (!(o instanceof CSS2DObject)) return;
+      const meta = o.userData.label as LabelMeta | undefined;
+      const el = o.element;
+      // display:none = culled by CSS2DRenderer (behind the camera / hidden group).
+      if (!meta || el.style.display === 'none') return;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      world.setFromMatrixPosition(o.matrixWorld);
+      const anchor = this.project(world, this.tmpA);
+      if (!anchor) return;
+      let { x, y } = anchor;
+      if (meta.kind === 'node') {
+        const r = this.pxPerMetre(world, anchor) * (meta.liftM ?? 0);
+        glyphs.push({ left: x - r, top: y - r, right: x + r, bottom: y + r });
+        y -= h / 2 + r + LABEL_GAP_PX + 1; // just above the glyph
+      }
+      let region: Point[] | undefined;
+      const extra: Offset[] = [];
+      if (meta.zonePoly) {
+        region = [];
+        for (const v of meta.zonePoly) {
+          const p = this.project(v, this.tmpB);
+          if (!p) {
+            region = []; // outline partly behind the camera: home position only
+            break;
+          }
+          region.push(p);
+        }
+        // More room inside the zone: points halfway from the anchor to each
+        // edge midpoint and each corner, nearest first.
+        const poly = meta.zonePoly;
+        const inside: Offset[] = [];
+        poly.forEach((a, i) => {
+          const b = poly[(i + 1) % poly.length] as THREE.Vector3;
+          for (const target of [this.tmpC.copy(a).add(b).multiplyScalar(0.5), a]) {
+            const p = this.project(this.tmpB.copy(world).lerp(target, 0.5), this.tmpB);
+            if (p) inside.push({ dx: p.x - x, dy: p.y - y });
+          }
+        });
+        inside.sort((u, v) => Math.hypot(u.dx, u.dy) - Math.hypot(v.dx, v.dy));
+        extra.push(...inside);
+      }
+      if (meta.along) {
+        const [a, b] = meta.along;
+        // Allowed area: a thin band around the line (away from the nodes), so a
+        // moved link label is never read as belonging to a neighbouring line.
+        const q0 = this.project(this.tmpB.copy(a).lerp(b, 0.12), this.tmpB);
+        const q1 = this.project(this.tmpC.copy(a).lerp(b, 0.88), this.tmpC);
+        const len = q0 && q1 ? Math.hypot(q1.x - q0.x, q1.y - q0.y) : 0;
+        if (q0 && q1 && len > 1) {
+          const ux = -(q1.y - q0.y) / len; // unit normal of the line on screen
+          const uy = (q1.x - q0.x) / len;
+          const half = h / 2 + 2;
+          region = [
+            { x: q0.x + ux * half, y: q0.y + uy * half },
+            { x: q1.x + ux * half, y: q1.y + uy * half },
+            { x: q1.x - ux * half, y: q1.y - uy * half },
+            { x: q0.x - ux * half, y: q0.y - uy * half },
+          ];
+          // Slide along the line first; then sit just beside it (still touching it).
+          const along: Point[] = [];
+          for (const t of LINK_LABEL_SLIDES) {
+            const p = this.project(this.tmpB.copy(a).lerp(b, t), this.tmpB);
+            if (p) along.push(p);
+          }
+          along.forEach((p) => extra.push({ dx: p.x - x, dy: p.y - y }));
+          for (const side of [1, -1]) {
+            along.forEach((p) => extra.push({ dx: p.x + side * ux * (h / 2) - x, dy: p.y + side * uy * (h / 2) - y }));
+          }
+        } else {
+          region = []; // line seen end-on: home position only
+        }
+      }
+      const rule = LABEL_RULES[meta.kind];
+      items.push({
+        el,
+        meta,
+        box: {
+          id: String(items.length),
+          x,
+          y,
+          w,
+          h,
+          priority: rule.priority,
+          hideable: rule.hideable,
+          prev: meta.prev,
+          extra,
+          ...(region ? { region } : {}),
+        },
+      });
+    });
+
+    const placements = declutterLabels(
+      items.map((i) => i.box),
+      { width: this.width, height: this.height, gap: LABEL_GAP_PX, obstacles: [...this.obstacleRects(), ...glyphs] },
+    );
+    let hidden = 0;
+    placements.forEach((pl, k) => {
+      const item = items[k];
+      if (!item) return;
+      item.meta.prev = pl.hidden ? null : { dx: pl.dx, dy: pl.dy };
+      item.el.classList.toggle(CULLED_CLASS, pl.hidden);
+      if (pl.hidden) {
+        hidden++;
+        return;
+      }
+      const x = item.box.x + pl.dx;
+      const y = item.box.y + pl.dy;
+      item.el.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    });
+    if (hidden !== this.culledCount) {
+      this.culledCount = hidden;
+      this.onLabelsCulled?.(hidden);
+    }
+  }
 
   dispose(): void {
     if (this.disposed) return;
@@ -642,5 +889,7 @@ export class RoomScene {
     this.labelRenderer.domElement.remove();
     this.links.clear();
     this.onRenderRate = null;
+    this.onLabelsCulled = null;
+    this.labelObstacles = [];
   }
 }

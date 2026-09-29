@@ -9,6 +9,8 @@ import type { LiveSnapshot } from '../api/ws';
 import { JsonView } from '../components/JsonView';
 import { Card, ErrorNotice, Notice } from '../components/ui';
 import { useApi } from '../hooks/useApi';
+import { bannerForMode } from '../lib/banner';
+import { linkOrigin } from '../lib/sourceControls';
 
 function pick(obj: JsonValue | null, keys: string[]): JsonValue | undefined {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return undefined;
@@ -72,10 +74,14 @@ export function HardwarePage({ live }: { live: LiveSnapshot }) {
         )}
       </Card>
       {status && status.links.length > 0 && (
-        <Card title="Devices reported by the active source">
+        <Card
+          title={`Links reported by the active source (${bannerForMode(status.source_mode)})`}
+          subtitle="Simulated and replayed links involve no board; only LIVE links are devices on this machine."
+        >
           <JsonView
             value={status.links.map((l) => ({
               link_id: l.link_id,
+              origin: linkOrigin(status, l).text,
               receiver_id: l.receiver_id,
               connected: l.connected,
               channel: l.channel,

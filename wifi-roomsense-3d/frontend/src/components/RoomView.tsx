@@ -9,7 +9,7 @@ import type { RoomGeometry } from '../api/types';
 import type { LiveSnapshot } from '../api/ws';
 import { RoomScene, type LinkVisual, type ViewPreset } from '../scene/RoomScene';
 import { SIMULATED_BANNER_TEXT, isSimulated } from '../lib/banner';
-import { formatAge, linkAges, linkDisplayState } from '../lib/freshness';
+import { type LinkFreshness, formatAge, linkDisplayAgeS, linkDisplayState, linkFreshness } from '../lib/freshness';
 import { LEGEND_ORDER, linkStyle } from '../lib/linkStyle';
 import { zoneDisplayDecision } from '../lib/zone';
 
@@ -30,12 +30,16 @@ export function RoomView({
   now: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const geoLabelRef = useRef<HTMLDivElement>(null);
+  const zoneNoteRef = useRef<HTMLDivElement>(null);
+  const redrawRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<RoomScene | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [wallOpacity, setWallOpacity] = useState(0.35);
   const [preset, setPreset] = useState<ViewPreset>('iso');
   const [extrude, setExtrude] = useState(false);
   const [redrawRate, setRedrawRate] = useState<number | null>(null);
+  const [hiddenLabels, setHiddenLabels] = useState(0);
 
   const connected = live.connection === 'open' && live.status !== null && live.statusReceivedAtMs !== null;
   const status = connected ? live.status : null;
@@ -53,6 +57,11 @@ export function RoomView({
     }
     sceneRef.current = scene;
     scene.setRenderRateListener((r) => setRedrawRate(r));
+    scene.setLabelCullListener((n) => setHiddenLabels(n));
+    // Overlays drawn over the view: scene labels are kept off them.
+    scene.setLabelObstacles(
+      [geoLabelRef.current, zoneNoteRef.current, redrawRef.current].filter((e): e is HTMLDivElement => e !== null),
+    );
     const ro =
       typeof ResizeObserver === 'undefined'
         ? null
@@ -80,16 +89,20 @@ export function RoomView({
     sceneRef.current?.setViewPreset(preset);
   }, [preset]);
 
-  // Per-link visuals: state from the backend, downgraded to STALE/NO_DATA client-side.
+  // Per-link visuals: state from the backend, downgraded to STALE/NO_DATA
+  // client-side (on the result's own age, not on frame arrivals). The age in
+  // the label is the older of the state age and the measurement age, so a
+  // STALE or OFFLINE label never looks fresher than its data.
   const visuals: LinkVisual[] = useMemo(() => {
     if (!room) return [];
-    const ages: Map<string, number | null> =
-      status && live.statusReceivedAtMs !== null ? linkAges(status, live.statusReceivedAtMs, now) : new Map();
+    const fresh: Map<string, LinkFreshness> =
+      status && live.statusReceivedAtMs !== null ? linkFreshness(status, live.statusReceivedAtMs, now) : new Map();
     return room.links.map((def) => {
       const act = status?.activity.find((a) => a.link_id === def.link_id);
-      const age = ages.get(def.link_id) ?? null;
-      const state = linkDisplayState(act, age, status?.stale_clear_timeout_s ?? 0, connected);
+      const f = fresh.get(def.link_id);
+      const state = linkDisplayState(act, f?.stateAgeS ?? null, status?.stale_clear_timeout_s ?? 0, connected, f?.measurementAgeS ?? null);
       const st = linkStyle(state);
+      const age = connected ? linkDisplayAgeS(f, state) : null;
       return { linkId: def.link_id, state, label: age !== null ? `${st.short} · ${formatAge(age)}` : st.short };
     });
   }, [room, status, live.statusReceivedAtMs, now, connected]);
@@ -108,6 +121,11 @@ export function RoomView({
       extrude,
     );
   }, [zone.show, zone.zoneId, zone.zoneLabel, extrude]);
+
+  // The footer note is an obstacle for scene labels: re-place them when it changes size.
+  useEffect(() => {
+    sceneRef.current?.invalidateLabels();
+  }, [zone.reason, zone.show, extrude, room]);
 
   const simulated = status ? isSimulated(status) : false;
   const unplaced = status
@@ -150,7 +168,10 @@ export function RoomView({
       <div className="room-view__stage">
         <div className="room-view__host" ref={hostRef} />
 
-        <div className={`geo-label ${room?.provenance === 'USER_PROVIDED' ? 'geo-label--user' : 'geo-label--example'}`}>
+        <div
+          ref={geoLabelRef}
+          className={`geo-label ${room?.provenance === 'USER_PROVIDED' ? 'geo-label--user' : 'geo-label--example'}`}
+        >
           {geometryProvenanceLabel(room)}
           {room && <span className="geo-label__name">{room.name}</span>}
         </div>
@@ -179,7 +200,7 @@ export function RoomView({
         )}
 
         <div className="stage-footer">
-          <div className={`zone-note ${zone.show ? 'zone-note--estimate' : ''}`}>
+          <div ref={zoneNoteRef} className={`zone-note ${zone.show ? 'zone-note--estimate' : ''}`}>
             {zone.show ? (
               <>
                 <strong>Estimated zone (experimental): {zone.zoneLabel}</strong> — Zone centre is a display anchor, not a
@@ -190,8 +211,14 @@ export function RoomView({
               <>{zone.reason}</>
             )}
           </div>
-          <div className="redraw-rate" title="How often the 3-D view is redrawn. This is NOT the measurement rate.">
+          <div ref={redrawRef} className="redraw-rate" title="How often the 3-D view is redrawn. This is NOT the measurement rate.">
             view redraws: {redrawRate === null ? '—' : `${redrawRate.toFixed(0)}/s`} (display only)
+            {hiddenLabels > 0 && (
+              <span className="redraw-rate__culled" title="Lower-priority labels (zones, compass, target room) hidden so the others stay readable. Zoom in to see them.">
+                {' '}
+                · {hiddenLabels} label{hiddenLabels === 1 ? '' : 's'} hidden to avoid overlap
+              </span>
+            )}
           </div>
         </div>
       </div>

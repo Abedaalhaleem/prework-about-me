@@ -1,17 +1,30 @@
 /**
  * Source selection. The user always picks the source explicitly:
- *  - Live: serial ports are listed but never auto-selected.
+ *  - Live: serial ports are listed but never auto-selected. The receivers
+ *    configured on the backend are listed; "Start live" is disabled when the
+ *    backend reports none.
  *  - Replay: a stored recording at a chosen speed.
  *  - Simulation: requires an explicit acknowledgement checkbox and is never
  *    pre-selected or auto-started.
+ * Links of the running source are labelled with their origin (simulated,
+ * replayed, live), so a simulated link never reads like a connected board.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { api } from '../api/client';
 import type { InputFormat, LtfConfig, ReceiverConfig, SystemStatus } from '../api/types';
 import { INPUT_FORMATS } from '../api/types';
 import { useAction, useApi } from '../hooks/useApi';
+import { bannerForMode } from '../lib/banner';
 import { fmtDuration } from '../lib/format';
+import {
+  type ReceiversKnowledge,
+  NO_RECEIVERS_TEXT,
+  describeReceiver,
+  linkOrigin,
+  startLiveGate,
+  stopSourceGate,
+} from '../lib/sourceControls';
 import { ErrorNotice, Notice } from './ui';
 
 type Tab = 'live' | 'replay' | 'simulation';
@@ -56,11 +69,84 @@ function startedText(s: SystemStatus | undefined): string | null {
   return `Source: ${s.source_banner} (${s.source_state})${s.source_detail ? ` — ${s.source_detail}` : ''}`;
 }
 
+/** Links of whatever source is running, each labelled with where it comes from. */
+function CurrentSourceLinks({ status }: { status: SystemStatus | null }) {
+  const mode = status?.source_mode ?? null;
+  return (
+    <>
+      <h3 className="h3">
+        Links of the running source{' '}
+        {status && <span className="muted">({mode ? bannerForMode(mode) : 'no source'})</span>}
+      </h3>
+      {!status ? (
+        <p className="muted">No backend connection.</p>
+      ) : status.links.length === 0 ? (
+        <p className="muted">None: {mode ? 'the source reports no links yet.' : 'no source is running.'}</p>
+      ) : (
+        <ul className="plain-list origin-list">
+          {status.links.map((l) => {
+            const origin = linkOrigin(status, l);
+            return (
+              <li key={l.link_id}>
+                <code>{l.receiver_id}</code> ← <code>{l.transmitter_id}</code>{' '}
+                <span className={`origin origin--${origin.tone}`}>{origin.text}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function ConfiguredReceivers({ knowledge, noneId }: { knowledge: ReceiversKnowledge; noneId: string }) {
+  return (
+    <>
+      <h3 className="h3">
+        Configured receivers <span className="muted">(configs/roomsense.toml)</span>
+      </h3>
+      {knowledge.kind === 'loading' && <p className="muted">Loading the configured receivers…</p>}
+      {knowledge.kind === 'unsupported' && (
+        <p className="hint">
+          This backend does not list its configured receivers (no GET /api/source/receivers). Start live will say so if none
+          are configured.
+        </p>
+      )}
+      {knowledge.kind === 'error' && <ErrorNotice error={knowledge.message} title="Could not list the configured receivers" />}
+      {knowledge.kind === 'list' && knowledge.receivers.length === 0 && (
+        <div id={noneId}>
+          <Notice kind="warn">{NO_RECEIVERS_TEXT}.</Notice>
+        </div>
+      )}
+      {knowledge.kind === 'list' && knowledge.receivers.length > 0 && (
+        <ul className="plain-list receiver-list">
+          {knowledge.receivers.map((r) => (
+            <li key={r.receiver_id}>
+              <code>{r.receiver_id}</code> ← <code>{r.transmitter_id ?? 'transmitter not set'}</code> on <code>{r.port}</code>
+              {describeReceiver(r) && <span className="muted"> · {describeReceiver(r)}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
 function LivePanel({ status }: { status: SystemStatus | null }) {
   const ports = useApi((sig) => api.serialPorts(sig), []);
+  const receivers = useApi((sig) => api.configuredReceivers(sig), []);
   const [drafts, setDrafts] = useState<ReceiverDraft[]>([]);
-  const start = useAction((receivers?: ReceiverConfig[]) => api.startLive(receivers));
-  const configured = status?.links ?? [];
+  const start = useAction((rx?: ReceiverConfig[]) => api.startLive(rx));
+  const noneId = useId();
+  // Data first: after a failed refresh the last known list stays usable.
+  const knowledge: ReceiversKnowledge = receivers.data
+    ? receivers.data.kind === 'list'
+      ? { kind: 'list', receivers: receivers.data.receivers }
+      : { kind: 'unsupported' }
+    : receivers.error
+      ? { kind: 'error', message: receivers.error }
+      : { kind: 'loading' };
+  const gate = startLiveGate(knowledge);
 
   const update = (i: number, patch: Partial<ReceiverDraft>): void =>
     setDrafts((ds) => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
@@ -70,7 +156,15 @@ function LivePanel({ status }: { status: SystemStatus | null }) {
     <div className="stack">
       <div className="row row--between">
         <h3 className="h3">Serial ports on this machine</h3>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={ports.reload} disabled={ports.loading}>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          onClick={() => {
+            ports.reload();
+            receivers.reload();
+          }}
+          disabled={ports.loading}
+        >
           {ports.loading ? 'Scanning…' : 'Rescan'}
         </button>
       </div>
@@ -108,20 +202,17 @@ function LivePanel({ status }: { status: SystemStatus | null }) {
       )}
       <p className="hint">Ports are never guessed. Receivers are configured in configs/roomsense.toml or below.</p>
 
-      <h3 className="h3">Receivers reported by the backend</h3>
-      {configured.length === 0 ? (
-        <p className="muted">None reported for the current source.</p>
-      ) : (
-        <ul className="plain-list">
-          {configured.map((l) => (
-            <li key={l.link_id}>
-              <code>{l.receiver_id}</code> ← <code>{l.transmitter_id}</code> ({l.connected ? 'connected' : 'not connected'})
-            </li>
-          ))}
-        </ul>
-      )}
+      <ConfiguredReceivers knowledge={knowledge} noneId={noneId} />
+      {receivers.data && <ErrorNotice error={receivers.error} title="Could not refresh the configured receivers" />}
 
-      <button type="button" className="btn btn--primary" disabled={start.busy} onClick={() => void start.run(undefined)}>
+      <button
+        type="button"
+        className="btn btn--primary"
+        disabled={start.busy || !gate.enabled}
+        title={gate.reason ?? undefined}
+        aria-describedby={gate.enabled ? undefined : noneId}
+        onClick={() => void start.run(undefined)}
+      >
         Start live (configured receivers)
       </button>
 
@@ -206,6 +297,8 @@ function LivePanel({ status }: { status: SystemStatus | null }) {
       </details>
       <ErrorNotice error={start.error} title="Live source not started" />
       {start.result && <Notice kind="ok">{startedText(start.result)}</Notice>}
+
+      <CurrentSourceLinks status={status} />
     </div>
   );
 }
@@ -317,6 +410,7 @@ function SimulationPanel() {
 export function SourceControls({ status }: { status: SystemStatus | null }) {
   const [tab, setTab] = useState<Tab>('live');
   const stop = useAction(() => api.stopSource());
+  const stopGate = stopSourceGate(status);
   return (
     <div className="source-controls">
       <div className="row row--between">
@@ -327,7 +421,13 @@ export function SourceControls({ status }: { status: SystemStatus | null }) {
             </button>
           ))}
         </div>
-        <button type="button" className="btn btn--danger btn--sm" disabled={stop.busy} onClick={() => void stop.run()}>
+        <button
+          type="button"
+          className="btn btn--danger btn--sm"
+          disabled={stop.busy || !stopGate.enabled}
+          title={stopGate.reason ?? 'Stop the running source'}
+          onClick={() => void stop.run()}
+        >
           Stop source
         </button>
       </div>

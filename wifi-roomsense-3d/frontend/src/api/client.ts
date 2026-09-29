@@ -30,6 +30,7 @@ import type {
   WalkTestReport,
   ZoneStatusResponse,
 } from './types';
+import { type ConfiguredReceiversResult, parseConfiguredReceivers } from '../lib/sourceControls';
 
 const TOKEN_KEY = 'roomsense.apiToken';
 
@@ -195,6 +196,25 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
 
 const enc = encodeURIComponent;
 
+/**
+ * GET /api/source/receivers. An older backend without the endpoint answers
+ * 404 (or 405): that is "unknown", not an error and not "none configured".
+ * A payload of an unexpected shape is an error, never read as an empty list.
+ */
+async function configuredReceivers(signal?: AbortSignal): Promise<ConfiguredReceiversResult> {
+  const path = '/api/source/receivers';
+  let raw: unknown;
+  try {
+    raw = await apiJson<unknown>(path, 'GET', undefined, signal);
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 405)) return { kind: 'unsupported' };
+    throw err;
+  }
+  const receivers = parseConfiguredReceivers(raw);
+  if (receivers === null) throw new ApiError(path, 200, 'unexpected response shape (expected a list of receivers)');
+  return { kind: 'list', receivers };
+}
+
 /** Typed endpoint helpers (docs/ARCHITECTURE.md "HTTP API"). */
 export const api = {
   health: (signal?: AbortSignal) => apiJson<HealthResponse>('/api/health', 'GET', undefined, signal),
@@ -203,6 +223,7 @@ export const api = {
     apiJson<SignalSnapshot>(`/api/signal?link_id=${enc(linkId)}&seconds=${enc(String(seconds))}`, 'GET', undefined, signal),
 
   serialPorts: (signal?: AbortSignal) => apiJson<SerialPortInfo[]>('/api/serial/ports', 'GET', undefined, signal),
+  configuredReceivers,
   startLive: (receivers?: ReceiverConfig[]) =>
     apiJson<SystemStatus>('/api/source/live', 'POST', receivers && receivers.length > 0 ? { receivers } : {}),
   startReplay: (recordingId: string, speed: number) =>

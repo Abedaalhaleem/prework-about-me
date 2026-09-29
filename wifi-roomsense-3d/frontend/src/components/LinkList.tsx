@@ -2,10 +2,14 @@
  * Per-link table: backend link status + latest activity result. Every number
  * is the backend's; missing values say "unavailable". The score is labelled
  * as a heuristic, never as a probability.
+ *
+ * Two ages are shown: "measurement age" (newest frame) and "state age" (the
+ * data behind the displayed state). The state goes STALE on its own age, so
+ * fresh frames never make an old state look current.
  */
 
 import type { SystemStatus } from '../api/types';
-import { formatAge, linkAges, linkDisplayState, statusLinkIds } from '../lib/freshness';
+import { formatAge, isStale, linkDisplayState, linkFreshness, statusLinkIds } from '../lib/freshness';
 import { fmtInt, fmtNum, fmtPercent } from '../lib/format';
 import { linkStyle, qualityCss } from '../lib/linkStyle';
 
@@ -33,14 +37,17 @@ export function LinkList({
       </p>
     );
   }
-  const ages = linkAges(status, receivedAtMs, now);
+  const fresh = linkFreshness(status, receivedAtMs, now);
+  const timeout = status.stale_clear_timeout_s;
   return (
     <div className="link-list">
       {ids.map((id) => {
         const link = status.links.find((l) => l.link_id === id);
         const act = status.activity.find((a) => a.link_id === id);
-        const age = ages.get(id) ?? null;
-        const state = linkDisplayState(act, age, status.stale_clear_timeout_s, true);
+        const f = fresh.get(id);
+        const age = f?.measurementAgeS ?? null;
+        const stateAge = f?.stateAgeS ?? null;
+        const state = linkDisplayState(act, stateAge, timeout, true, age);
         const st = linkStyle(state);
         const q = act?.quality;
         return (
@@ -66,8 +73,15 @@ export function LinkList({
             </div>
             <dl className="link-card__grid">
               <div>
-                <dt>measurement age</dt>
-                <dd>{formatAge(age)}</dd>
+                <dt title="Time since the newest measured frame on this link">measurement age</dt>
+                <dd className={isStale(age, timeout) ? 'age-stale' : undefined}>{formatAge(age)}</dd>
+              </div>
+              <div>
+                <dt title="Age of the data behind the displayed state (window end of the latest result)">state age</dt>
+                <dd className={act && isStale(stateAge, timeout) ? 'age-stale' : undefined}>
+                  {act ? formatAge(stateAge) : 'no result yet'}
+                  {act && isStale(stateAge, timeout) && <span className="muted"> (older than {timeout} s: not shown as current)</span>}
+                </dd>
               </div>
               <div>
                 <dt title="Unitless heuristic, not a probability">score (heuristic)</dt>

@@ -1,16 +1,24 @@
 /**
  * Measurement age and staleness, computed client-side.
  *
- * "Measurement age" is the time since the newest *measured* frame, NOT the
- * render frame rate and NOT the WebSocket push rate. It keeps growing between
- * status messages because we add the time elapsed since the status arrived.
+ * Two different ages are kept apart on purpose:
  *
- * To avoid depending on the browser and server clocks agreeing (LAN mode),
- * ages are computed in the server's clock: (server_time - window_end) plus the
- * locally measured time since the status was received.
+ *  - "Measurement age" is the time since the newest *measured frame* on a
+ *    link (LinkStatus.last_frame_age_s). It is NOT the render frame rate and
+ *    NOT the WebSocket push rate.
+ *  - "State age" is how old the data behind the latest *activity result* is,
+ *    taken from the result's own provenance (window end and computation time).
+ *    A link's displayed state goes STALE when its state age exceeds
+ *    stale_clear_timeout_s, regardless of frame arrivals: if processing falls
+ *    behind while frames keep arriving, an old state must not look current.
+ *
+ * Both keep growing between status messages because we add the time elapsed
+ * since the status arrived. To avoid depending on the browser and server
+ * clocks agreeing (LAN mode), ages are computed in the server's clock:
+ * (server_time - timestamp) plus the locally measured time since receipt.
  */
 
-import type { ActivityResult, ActivityState, LinkStatus, SystemStatus } from '../api/types';
+import type { ActivityResult, ActivityState, LinkStatus, Provenance, SystemStatus } from '../api/types';
 
 /** Link states the UI can draw: backend states plus two client-side ones. */
 export type LinkDisplayState = ActivityState | 'STALE' | 'NO_DATA';
@@ -24,7 +32,7 @@ export function serverNowMs(status: SystemStatus, receivedAtMs: number, nowMs: n
   return status.server_time_unix_ns / 1e6 + Math.max(0, nowMs - receivedAtMs);
 }
 
-/** Age of a window end (Unix ns, server clock) at client time `nowMs`. */
+/** Age of a server-clock timestamp (Unix ns) at client time, or null if there is none. */
 export function ageFromWindowEndS(
   windowEndUnixNs: number | null | undefined,
   serverTimeUnixNs: number,
@@ -32,14 +40,41 @@ export function ageFromWindowEndS(
 ): number | null {
   if (windowEndUnixNs === null || windowEndUnixNs === undefined || !Number.isFinite(windowEndUnixNs)) return null;
   const atServer = (serverTimeUnixNs - windowEndUnixNs) / 1e9;
-  // A negative value means the window end is "in the future" of the server
+  // A negative value means the timestamp is "in the future" of the server
   // clock (clock step); clamp rather than report a negative age.
   return Math.max(0, atServer) + elapsedS;
 }
 
 /**
- * Age of the newest measurement for one link, in seconds, or null when the
- * backend reports nothing we can age (never guessed).
+ * Age of a derived result (activity or zone): the OLDER of the age of its
+ * window end (the data it describes) and the age of its computation. Null
+ * when the provenance carries neither timestamp.
+ */
+export function provenanceAgeS(
+  prov: Provenance | null | undefined,
+  serverTimeUnixNs: number,
+  elapsedS: number,
+): number | null {
+  if (!prov) return null;
+  const ages = [
+    ageFromWindowEndS(prov.window_end_unix_ns, serverTimeUnixNs, elapsedS),
+    ageFromWindowEndS(prov.computed_at_unix_ns, serverTimeUnixNs, elapsedS),
+  ].filter((a): a is number => a !== null);
+  return ages.length > 0 ? Math.max(...ages) : null;
+}
+
+/** Age of the newest measured frame on a link, per the backend, plus time since receipt. */
+export function linkFrameAgeS(link: LinkStatus | undefined, receivedAtMs: number, nowMs: number): number | null {
+  if (!link || link.last_frame_age_s === null || !Number.isFinite(link.last_frame_age_s)) return null;
+  return Math.max(0, link.last_frame_age_s) + elapsedSinceS(receivedAtMs, nowMs);
+}
+
+/**
+ * Measurement age of one link: the age of its newest measured frame. Only
+ * when the backend reports no frame age for the link does it fall back to the
+ * end of the latest result's window (itself the time of a measured frame, so
+ * never fresher than the newest frame). Null when nothing can be aged — never
+ * guessed.
  */
 export function linkMeasurementAgeS(
   link: LinkStatus | undefined,
@@ -48,16 +83,48 @@ export function linkMeasurementAgeS(
   receivedAtMs: number,
   nowMs: number,
 ): number | null {
-  const elapsed = elapsedSinceS(receivedAtMs, nowMs);
-  const candidates: number[] = [];
-  if (link && link.last_frame_age_s !== null && Number.isFinite(link.last_frame_age_s)) {
-    candidates.push(Math.max(0, link.last_frame_age_s) + elapsed);
-  }
-  if (activity) {
-    const a = ageFromWindowEndS(activity.provenance.window_end_unix_ns, status.server_time_unix_ns, elapsed);
-    if (a !== null) candidates.push(a);
-  }
-  return candidates.length > 0 ? Math.min(...candidates) : null;
+  const frameAge = linkFrameAgeS(link, receivedAtMs, nowMs);
+  if (frameAge !== null) return frameAge;
+  if (!activity) return null;
+  return ageFromWindowEndS(
+    activity.provenance.window_end_unix_ns,
+    status.server_time_unix_ns,
+    elapsedSinceS(receivedAtMs, nowMs),
+  );
+}
+
+/**
+ * Age of the latest activity state: how old the data behind it is, from the
+ * result's own provenance only (never from frame arrivals).
+ */
+export function activityStateAgeS(
+  activity: ActivityResult | undefined,
+  status: SystemStatus,
+  receivedAtMs: number,
+  nowMs: number,
+): number | null {
+  if (!activity) return null;
+  return provenanceAgeS(activity.provenance, status.server_time_unix_ns, elapsedSinceS(receivedAtMs, nowMs));
+}
+
+export interface LinkFreshness {
+  /** Age of the newest measured frame ("measurement age"). */
+  measurementAgeS: number | null;
+  /** Age of the data behind the latest activity state (drives STALE). */
+  stateAgeS: number | null;
+}
+
+/**
+ * The one age to print next to a displayed link state (3-D label): the OLDER
+ * of the state age and the measurement age, so a stale state with fresh
+ * frames reads its own (old) age. For SENSOR_OFFLINE only the frame age means
+ * anything (the offline verdict itself is always recent): a link silent for
+ * 45 s reads "45 s", and a link that never delivered a frame shows no age.
+ */
+export function linkDisplayAgeS(f: LinkFreshness | undefined, state: LinkDisplayState | null = null): number | null {
+  if (state === 'SENSOR_OFFLINE') return f?.measurementAgeS ?? null;
+  const ages = [f?.stateAgeS ?? null, f?.measurementAgeS ?? null].filter((a): a is number => a !== null);
+  return ages.length > 0 ? Math.max(...ages) : null;
 }
 
 /** All link ids known to the status (links and activity results). */
@@ -68,13 +135,23 @@ export function statusLinkIds(status: SystemStatus): string[] {
   return [...ids];
 }
 
-export function linkAges(status: SystemStatus, receivedAtMs: number, nowMs: number): Map<string, number | null> {
-  const out = new Map<string, number | null>();
+export function linkFreshness(status: SystemStatus, receivedAtMs: number, nowMs: number): Map<string, LinkFreshness> {
+  const out = new Map<string, LinkFreshness>();
   for (const id of statusLinkIds(status)) {
     const link = status.links.find((l) => l.link_id === id);
     const act = status.activity.find((a) => a.link_id === id);
-    out.set(id, linkMeasurementAgeS(link, act, status, receivedAtMs, nowMs));
+    out.set(id, {
+      measurementAgeS: linkMeasurementAgeS(link, act, status, receivedAtMs, nowMs),
+      stateAgeS: activityStateAgeS(act, status, receivedAtMs, nowMs),
+    });
   }
+  return out;
+}
+
+/** Measurement age per link. */
+export function linkAges(status: SystemStatus, receivedAtMs: number, nowMs: number): Map<string, number | null> {
+  const out = new Map<string, number | null>();
+  linkFreshness(status, receivedAtMs, nowMs).forEach((f, id) => out.set(id, f.measurementAgeS));
   return out;
 }
 
@@ -94,18 +171,21 @@ export function isStale(ageS: number | null, timeoutS: number): boolean {
 
 /**
  * What to draw for a link. Stale data is never shown with its last state:
- * it becomes STALE (grey). SENSOR_OFFLINE always wins. No connection or no
- * result at all is NO_DATA.
+ * it becomes STALE (grey). The state age decides (see the module comment); a
+ * known measurement age older than the timeout also makes it STALE (fail
+ * safe). SENSOR_OFFLINE always wins. No connection or no result is NO_DATA.
  */
 export function linkDisplayState(
   activity: ActivityResult | undefined,
-  ageS: number | null,
+  stateAgeS: number | null,
   timeoutS: number,
   backendConnected: boolean,
+  measurementAgeS: number | null = null,
 ): LinkDisplayState {
   if (!backendConnected || !activity) return 'NO_DATA';
   if (activity.state === 'SENSOR_OFFLINE') return 'SENSOR_OFFLINE';
-  if (isStale(ageS, timeoutS)) return 'STALE';
+  if (isStale(stateAgeS, timeoutS)) return 'STALE';
+  if (measurementAgeS !== null && isStale(measurementAgeS, timeoutS)) return 'STALE';
   return activity.state;
 }
 

@@ -8,7 +8,7 @@
 
 import type { RoomGeometry, SystemStatus } from '../api/types';
 import { capabilityEnabled } from './banner';
-import { ageFromWindowEndS, elapsedSinceS, isStale } from './freshness';
+import { elapsedSinceS, isStale, provenanceAgeS } from './freshness';
 
 export interface ZoneDisplayDecision {
   show: boolean;
@@ -38,11 +38,8 @@ export function zoneDisplayDecision(
   if (!room) return hidden('No room geometry loaded: estimate not shown.');
   const z = room.zones.find((zz) => zz.id === zone.zone_id);
   if (!z) return hidden(`Estimated zone "${zone.zone_id}" is not in the current room geometry: not shown.`);
-  const age = ageFromWindowEndS(
-    zone.provenance?.window_end_unix_ns ?? null,
-    status.server_time_unix_ns,
-    elapsedSinceS(receivedAtMs, nowMs),
-  );
+  // The older of the window end and the computation time (see freshness.ts).
+  const age = provenanceAgeS(zone.provenance, status.server_time_unix_ns, elapsedSinceS(receivedAtMs, nowMs));
   if (isStale(age, status.stale_clear_timeout_s)) {
     return hidden('The zone estimate is stale (older than the clear timeout): not shown.');
   }
