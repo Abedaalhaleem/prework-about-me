@@ -27,21 +27,25 @@ if [ "$(id -u)" -eq 0 ]; then
   die "do not run this as root. RoomSense needs no elevated privileges (for serial access on Linux, add your user to the 'dialout' group yourself)."
 fi
 
-# --- Python ------------------------------------------------------------------
-PY=""
-for cand in python3 python; do
-  if command -v "$cand" >/dev/null 2>&1; then PY="$cand"; break; fi
-done
-if [ -z "$PY" ] || ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-  die "Python 3.11 or newer is required (found: ${PY:-none}${PY:+ $("$PY" -V 2>&1)}). Install it from your package manager or python.org, or let uv provide one: 'uv python install 3.11'."
-fi
-info "Python OK ($("$PY" -V 2>&1))"
-
 # --- uv ------------------------------------------------------------------------
 if ! command -v uv >/dev/null 2>&1; then
   die "uv is required to install the pinned backend dependencies. See https://docs.astral.sh/uv/getting-started/installation/ (it installs into your home directory; no sudo)."
 fi
 info "uv OK ($(uv --version))"
+
+# --- Python ----------------------------------------------------------------------
+# Either a Python >= 3.11 on PATH or one managed by uv is fine: uv sync picks it.
+PY=""
+for cand in python3 python; do
+  if command -v "$cand" >/dev/null 2>&1; then PY="$cand"; break; fi
+done
+if [ -n "$PY" ] && "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  info "Python OK ($("$PY" -V 2>&1))"
+elif UV_PY="$(uv python find '>=3.11' 2>/dev/null)" && [ -n "$UV_PY" ]; then
+  info "Python OK (uv-managed: $UV_PY)"
+else
+  die "Python 3.11 or newer is required (found on PATH: ${PY:-none}${PY:+ $("$PY" -V 2>&1)}). Install it from your package manager or python.org, or let uv provide one (per user, no sudo): 'uv python install 3.11'."
+fi
 
 # --- Node.js ---------------------------------------------------------------------
 if [ "$SKIP_FRONTEND" -eq 0 ]; then
