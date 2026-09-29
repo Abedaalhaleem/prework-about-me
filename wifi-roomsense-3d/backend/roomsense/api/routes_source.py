@@ -7,7 +7,7 @@ simulation must be explicitly acknowledged as synthetic.
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from ..acquisition.serial_source import list_serial_ports
 from ..config import ReceiverConfig
@@ -35,9 +35,9 @@ class ReplayStartRequest(_Body):
 class SimulationStartRequest(_Body):
     scenario: str = Field(min_length=1, max_length=64)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
-    # Deliberately a plain bool defaulting to False: the runtime refuses with a
-    # clear message unless the client explicitly acknowledged synthetic data.
-    acknowledge_simulated: bool = False
+    # Strict (only JSON true counts) and defaulting to False: the runtime refuses
+    # with a clear message unless the client explicitly acknowledged synthetic data.
+    acknowledge_simulated: StrictBool = False
 
 
 def _check_ports(rt: AppRuntime, receivers: list[ReceiverConfig]) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from ..runtime import AppRuntime
 from ..storage.models import (
@@ -29,9 +29,10 @@ class _Body(BaseModel):
 class ConsentIn(_Body):
     """Consent as sent by the UI. The statement text is filled in by the server
     from its own table, so the client cannot claim agreement to another text.
-    ``all_participants_consented`` is a plain bool so a refusal can be explained."""
+    ``all_participants_consented`` is strict (only JSON true counts); false is
+    refused by the runtime with an explanation."""
 
-    all_participants_consented: bool
+    all_participants_consented: StrictBool
     participant_count: int = Field(ge=1, le=1000)
     purpose: str = Field(min_length=1, max_length=500)
     statement_version: str = CONSENT_STATEMENT_VERSION

@@ -483,23 +483,28 @@ class AppRuntime:
                 self._discarded_on_switch += 1
             return
         item = (gen, ev)
-        try:
-            if live:
-                # A live reader must never wait: the OS serial buffer would
-                # overflow and the loss would be invisible.
+        if live:
+            # A live reader must never wait: the OS serial buffer would overflow
+            # and the loss would be invisible. Drop the newest and count it.
+            try:
                 self._q.put_nowait(item)
+            except queue.Full:
+                self._count_drop(ev)
+            return
+        deadline = time.monotonic() + NON_LIVE_PUT_TIMEOUT_S
+        while True:
+            try:
+                self._q.put(item, timeout=0.05)
                 return
-            deadline = time.monotonic() + NON_LIVE_PUT_TIMEOUT_S
-            while True:
-                try:
-                    self._q.put(item, timeout=0.05)
+            except queue.Full:
+                if not self._accepting or gen != self._gen or self._closing:
+                    # The source is being switched or stopped; not a processing backlog.
+                    with self._stats_lock:
+                        self._discarded_on_switch += 1
                     return
-                except queue.Full:
-                    if (not self._accepting or gen != self._gen or self._closing
-                            or time.monotonic() >= deadline):
-                        raise
-        except queue.Full:
-            self._count_drop(ev)
+                if time.monotonic() >= deadline:
+                    self._count_drop(ev)
+                    return
 
     def _count_drop(self, ev: SourceEvent) -> None:
         if isinstance(ev, FrameEvent):
@@ -1656,6 +1661,12 @@ class AppRuntime:
         )
         zone_st = self.zone_status()
         zone = self._current_zone(zone_st)
+        if simulated and zone.state != ZoneState.DISABLED:
+            # Defence in depth: the predictor refuses SIMULATION provenance, and a
+            # replay of simulated data must never yield a zone output either.
+            zone = ZonePrediction(state=ZoneState.DISABLED, criteria_version=zone.criteria_version,
+                                  reasons=["SIMULATED_SOURCE: zone estimation never runs on simulated data "
+                                           "(including replays of simulated recordings)"])
         pose = self.pose_status(links)
         try:
             report = self.validation_report()
@@ -1675,8 +1686,9 @@ class AppRuntime:
             connected_live_links=sum(1 for ls in links if ls.connected) if mode == SourceMode.LIVE else 0,
             baseline_valid=baseline_valid,
             calibration_detail=cal_detail,
-            zone_enabled=zone_st.get("state") == "ENABLED",
-            zone_reasons=[str(r) for r in zone_st.get("reasons", [])],
+            zone_enabled=zone_st.get("state") == "ENABLED" and not simulated,
+            zone_reasons=[str(r) for r in zone_st.get("reasons", [])] + (
+                ["SIMULATED_SOURCE: the data is simulated; zone estimation stays off"] if simulated else []),
             pose_status=pose,
             through_wall_status=through_wall,
             evidence=self._evidence,

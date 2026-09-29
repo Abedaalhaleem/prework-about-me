@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from ..runtime import AppRuntime
 from ..schemas import CalibrationRecord, RoomGeometry, WalkTestReport
@@ -20,8 +20,8 @@ class _Body(BaseModel):
 
 class BaselineStartRequest(_Body):
     link_ids: list[str] | None = Field(default=None, max_length=64)
-    # A plain bool so the runtime can refuse with an explanation when it is not true.
-    confirm_room_empty: bool = False
+    # Strict (only JSON true counts); when absent the runtime refuses with an explanation.
+    confirm_room_empty: StrictBool = False
 
 
 class WalkTestStartRequest(_Body):
