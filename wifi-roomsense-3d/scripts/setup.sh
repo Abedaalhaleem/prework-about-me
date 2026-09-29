@@ -23,8 +23,9 @@ done
 die() { echo "setup: $*" >&2; exit 1; }
 info() { echo "setup: $*"; }
 
-if [ "$(id -u)" -eq 0 ]; then
-  die "do not run this as root. RoomSense needs no elevated privileges (for serial access on Linux, add your user to the 'dialout' group yourself)."
+if [ "$(id -u)" -eq 0 ] && [ "${ROOMSENSE_ALLOW_ROOT:-0}" != "1" ]; then
+  # Files created as root (virtualenv, data/) would later be unwritable for your user.
+  die "do not run this as root or with sudo: RoomSense needs no elevated privileges (for serial access on Linux, add your user to the 'dialout' group yourself). In a container that only has root, set ROOMSENSE_ALLOW_ROOT=1."
 fi
 
 # --- uv ------------------------------------------------------------------------
@@ -42,7 +43,7 @@ done
 if [ -n "$PY" ] && "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
   info "Python OK ($("$PY" -V 2>&1))"
 elif UV_PY="$(uv python find '>=3.11' 2>/dev/null)" && [ -n "$UV_PY" ]; then
-  info "Python OK (uv-managed: $UV_PY)"
+  info "Python OK (found by uv: $UV_PY)"
 else
   die "Python 3.11 or newer is required (found on PATH: ${PY:-none}${PY:+ $("$PY" -V 2>&1)}). Install it from your package manager or python.org, or let uv provide one (per user, no sudo): 'uv python install 3.11'."
 fi
@@ -76,8 +77,32 @@ fi
 
 # --- config and local folders ------------------------------------------------------
 if [ ! -f "$REPO/configs/roomsense.toml" ]; then
-  cp "$REPO/configs/roomsense.example.toml" "$REPO/configs/roomsense.toml"
-  info "created configs/roomsense.toml from the example; edit the [[acquisition.receivers]] ports to match your boards"
+  # The example's receiver block names a sample port (/dev/ttyUSB0) that may not
+  # exist here (macOS uses /dev/cu.*). Copy it commented out, so no receiver
+  # looks configured until the user sets a real port. Ports are never guessed.
+  TMP_CFG="$REPO/configs/.roomsense.toml.tmp"
+  awk '
+    /^\[\[acquisition\.receivers\]\]/ {
+      if (!noted) {
+        print "# NOT CONFIGURED YET: set each receiver'"'"'s serial port (list ports with: cd backend && uv run roomsense ports),"
+        print "# then remove the leading \"# \" from its block. Until then no receiver is configured and"
+        print "# starting the LIVE source is refused with NO_RECEIVERS_CONFIGURED."
+        noted = 1
+      }
+      in_rx = 1
+      print "# " $0
+      next
+    }
+    in_rx && (/^[[:space:]]*$/ || /^\[/) { in_rx = 0 }
+    { if (in_rx) print "# " $0; else print }
+  ' "$REPO/configs/roomsense.example.toml" >"$TMP_CFG"
+  if (cd "$REPO/backend" && uv run --frozen python -c 'import sys; from roomsense.config import load_config; c = load_config(sys.argv[1]); sys.exit(0 if not c.acquisition.receivers else 1)' "$TMP_CFG"); then
+    mv "$TMP_CFG" "$REPO/configs/roomsense.toml"
+    info "created configs/roomsense.toml from the example with the receiver block commented out; set your boards' serial ports there"
+  else
+    rm -f "$TMP_CFG"
+    die "could not prepare configs/roomsense.toml from the example; copy configs/roomsense.example.toml by hand and edit the receiver ports"
+  fi
 else
   info "configs/roomsense.toml exists; left unchanged"
 fi

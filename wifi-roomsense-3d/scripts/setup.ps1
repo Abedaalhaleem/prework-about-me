@@ -36,7 +36,7 @@ if ($pyOk) {
 } else {
     $uvPy = (uv python find '>=3.11' 2>$null)
     if ($LASTEXITCODE -eq 0 -and $uvPy) {
-        Info "Python OK (uv-managed: $uvPy)"
+        Info "Python OK (found by uv: $uvPy)"
     } else {
         Fail "Python 3.11 or newer is required. Install it from python.org, or let uv provide one (per user): 'uv python install 3.11'."
     }
@@ -74,8 +74,36 @@ if (-not $SkipFrontend) {
 # --- config and local folders -----------------------------------------------
 $cfg = Join-Path $Repo 'configs\roomsense.toml'
 if (-not (Test-Path $cfg)) {
-    Copy-Item (Join-Path $Repo 'configs\roomsense.example.toml') $cfg
-    Info "created configs\roomsense.toml from the example; set the [[acquisition.receivers]] ports (e.g. COM5)"
+    # The example's receiver block names a sample Linux port (/dev/ttyUSB0). Copy it
+    # commented out, so no receiver looks configured until the user sets a real
+    # port (e.g. COM5). Ports are never guessed.
+    $out = New-Object System.Collections.Generic.List[string]
+    $inRx = $false; $noted = $false
+    foreach ($line in Get-Content (Join-Path $Repo 'configs\roomsense.example.toml')) {
+        if ($line -match '^\[\[acquisition\.receivers\]\]') {
+            if (-not $noted) {
+                $out.Add("# NOT CONFIGURED YET: set each receiver's serial port (list ports with: cd backend; uv run roomsense ports),")
+                $out.Add('# then remove the leading "# " from its block. Until then no receiver is configured and')
+                $out.Add('# starting the LIVE source is refused with NO_RECEIVERS_CONFIGURED.')
+                $noted = $true
+            }
+            $inRx = $true
+            $out.Add("# $line")
+            continue
+        }
+        if ($inRx -and ($line -match '^\s*$' -or $line -match '^\[')) { $inRx = $false }
+        if ($inRx) { $out.Add("# $line") } else { $out.Add($line) }
+    }
+    $tmp = Join-Path $Repo 'configs\.roomsense.toml.tmp'
+    [System.IO.File]::WriteAllLines($tmp, $out)
+    Push-Location (Join-Path $Repo 'backend')
+    try {
+        uv run --frozen python -c "import sys; from roomsense.config import load_config; c = load_config(sys.argv[1]); sys.exit(0 if not c.acquisition.receivers else 1)" $tmp
+        $ok = ($LASTEXITCODE -eq 0)
+    } finally { Pop-Location }
+    if (-not $ok) { Remove-Item $tmp -Force; Fail "could not prepare configs\roomsense.toml; copy configs\roomsense.example.toml by hand and edit the receiver ports" }
+    Move-Item $tmp $cfg
+    Info "created configs\roomsense.toml from the example with the receiver block commented out; set your boards' serial ports (e.g. COM5) there"
 } else {
     Info "configs\roomsense.toml exists; left unchanged"
 }

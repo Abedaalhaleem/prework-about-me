@@ -57,7 +57,7 @@ _secrets: set[str] = set()
 # is emitted as a structured field.
 _STANDARD_ATTRS = frozenset(
     vars(logging.LogRecord("x", logging.INFO, "x", 0, "x", None, None)).keys()
-) | {"message", "asctime", "taskName"}
+) | {"message", "asctime", "taskName", "color_message"}  # color_message: uvicorn's ANSI duplicate of msg
 
 
 def register_secret(value: str | None) -> None:
