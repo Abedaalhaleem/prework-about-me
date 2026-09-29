@@ -57,7 +57,7 @@
         "test_zone*.py"
       ],
       "notes": [
-        "No automated tests matching software_test_globs existed when this file was reviewed (2026-09-29), so software_tested is false. No zone model has been trained or validated on real measurements."
+        "Dataset building, session-level splitting, training, evaluation against the predefined criteria, the model registry and the predictor gate are covered by automated tests (tests/test_zone*.py) on SYNTHETIC sessions only. Those tests also check that synthetic data can never enable the capability. No zone model has been trained or validated on real measurements, so zone estimation stays DISABLED."
       ],
       "would_change": {
         "software_tested": "Set to true once tests matching software_test_globs (tests/test_zone*.py) exist and pass on synthetic data; tests/test_capabilities.py checks that every true claim names existing test files.",

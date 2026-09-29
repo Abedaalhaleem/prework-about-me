@@ -362,8 +362,7 @@ Nothing in this list can be done or confirmed from the build container.
 
 The four evidence levels are kept separate. A "yes" needs the named evidence.
 `configs/verification_evidence.json` is authoritative for the capabilities.
-The values below are what it recorded when this report was written
-(2026-09-29).
+The values below match it as of 2026-09-29, after the zone tests were added.
 
 | Item | Software-tested | Firmware-compiled | Hardware-tested | Through-wall-validated |
 |---|---|---|---|---|
@@ -371,7 +370,7 @@ The values below are what it recorded when this report was written
 | Firmware (`firmware/esp32`) | Host unit tests of the portable core only (see `firmware/esp32/README.md`) | **NO**: ESP-IDF is not installed in the build container | **NO** | **NO** |
 | A: acquisition | yes (synthetic data and upstream fixtures only) | **NO** | **NO** | **NO** |
 | B: motion detection | yes (synthetic data only) | **NO** | **NO** | **NO** |
-| C: zone estimation | no (at the time of writing) | **NO** | **NO** | **NO** |
+| C: zone estimation | yes (synthetic sessions only; tests also prove synthetic data can never enable it) | **NO** | **NO** | **NO** |
 | D: pose research gate | yes (gate logic only) | **NO** | **NO** | **NO** |
 
 Passing software tests show that the code paths behave as specified on
