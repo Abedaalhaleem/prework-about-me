@@ -67,6 +67,16 @@ def make_cfg(tmp_path: Path, **sections: Any) -> AppConfig:
     return AppConfig.model_validate(_merge(base, sections))
 
 
+def make_offline_cfg(tmp_path: Path, **sections: Any) -> AppConfig:
+    """Config for runtimes driven with ``pump()`` and a non-realtime simulation.
+
+    The smallest allowed queue keeps the generator (which blocks on a full
+    queue) only a few dozen events ahead of processing, so "source FINISHED"
+    means the data really was processed, as it does with real-time sources.
+    """
+    return make_cfg(tmp_path, **_merge({"acquisition": {"frame_queue_size": 64}}, sections))
+
+
 # Short windows and a short quiet baseline so live calibrations finish in seconds.
 FAST_CALIBRATION: dict[str, Any] = {
     "processing": {"window_s": 1.0, "hop_s": 0.25, "min_frames_per_window": 10},

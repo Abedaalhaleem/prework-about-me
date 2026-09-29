@@ -150,8 +150,10 @@ THROUGH_WALL_CRITERIA_PATH = REPO_ROOT / "configs" / "through_wall_criteria.toml
 # dropped (and counted). Live sources never wait.
 NON_LIVE_PUT_TIMEOUT_S = 1.0
 # engine.step runs whenever the clock advanced by hop_s * STEP_FRACTION, so a
-# window is computed at most that much later than it became due.
-STEP_FRACTION = 0.2
+# window is computed at most that much later than it became due (the engine
+# starts the next hop from the actual window end, so this lag adds to the
+# spacing). A step with nothing due is cheap.
+STEP_FRACTION = 0.05
 PROCESS_BATCH = 256
 IDLE_WAIT_S = 0.05
 ACTIVITY_FLUSH_INTERVAL_S = 1.0
