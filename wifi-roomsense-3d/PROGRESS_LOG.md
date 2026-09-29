@@ -43,3 +43,66 @@ Wi-Fi hardware).
   * Upstream prints from inside the Wi-Fi callback.
 * **Dependencies locked.** uv.lock: fastapi 0.141.1, pydantic 2.13.5, numpy 2.4.6, scipy 1.17.1, scikit-learn 1.9.1, pyserial 3.5, pytest 8.4.2. package-lock.json: react 19.3.0, three 0.186.1, vite 8.3.1, typescript 5.9.3, vitest 5.0.2.
 * **Zone enablement criteria written before any zone code or data existed** (`configs/zone_enablement.toml`).
+* **Stage 1, built in parallel** (every count is from an executed run):
+  * Acquisition: strict parsers for the upstream classic and C5/C6 formats and for RoomSense RSCSI v1, rollover handling, live serial with reconnect, replay, a labelled simulator and the acquisition manager. 156 tests.
+  * Processing: gap-aware windows, quality, features, quiet baseline, hysteresis detector, drift monitor and engine. 112 tests.
+  * Storage and validation metrics. 95 tests.
+  * Pose gate, capability registry and model research. 196 tests.
+  * Hardware inspection. 62 tests.
+  * Firmware core: 27 host tests / 347 checks. A header-level syntax check was also run against the real ESP-IDF v5.5.5 headers. It is **not a build**.
+  * Frontend: 73 tests, typecheck and build.
+* **Stage 2.**
+  * Zone estimation: 104 tests on synthetic sessions. They show synthetic data can never enable it.
+  * Runtime, HTTP/WebSocket API, CLI and scripts, with the required safety-invariant tests. Full backend suite: 821 passed.
+* **Integration review (executed against a real server and headless Chromium).**
+  * Found and fixed a cross-origin hole: any web page could read `/api/ws` and trigger state-changing POSTs. A foreign `Origin` is now refused (826 passed).
+* **First real run of the app.** Uvicorn had no WebSocket implementation, so the UI could never connect. Added the pinned `websockets` dependency.
+  * The full path simulation → processing → API → 3-D dashboard was then run and screenshotted: SIMULATED DATA banner, a baseline accepted after 68 s, and MOTION_DETECTED on the simulated walk.
+* **Fix round from the review.**
+  * UI: simulated or replayed links are never shown as connected boards. The replay-of-simulation banner is fixed. A disconnected LIVE source gets a red pill. Staleness is based on each result's own age. Labels are decluttered and the header is compacted.
+  * Backend:
+    * errors always come back as `{detail, code}`;
+    * `hardware_required` is no longer sticky;
+    * deleting a recording also removes models, exports and consent rows, then runs a WAL checkpoint with `secure_delete`;
+    * export zips count toward the quota;
+    * CLI commands take the data-folder lock;
+    * an invalid token refuses startup;
+    * stalled processing makes results UNKNOWN;
+    * `GET /api/source/receivers` was added;
+    * the example config ships with no active receiver.
+  * The API token charset was restricted to what a browser can send over a WebSocket. Capability B is not ENABLED while processing is stalled.
+* **Fresh-clone check (executed).** `git clone` of the pushed branch → `scripts/setup.sh` → `scripts/start.sh` → `/api/health` OK, UI served, status NO SOURCE / HARDWARE REQUIRED / zone and pose DISABLED → `scripts/stop.sh`, which shut down gracefully.
+  * This ran as root in the container with `ROOMSENSE_ALLOW_ROOT=1`.
+  * macOS and Windows runs have **not** been executed.
+
+## Final status (2026-09-29)
+
+| Check | Result |
+|---|---|
+| Backend `uv run pytest -q` | **882 passed** (synthetic data and upstream fixtures only) |
+| Frontend `npm run typecheck && npm test && npm run build` | **124 tests passed**, typecheck and build OK |
+| Firmware core `make -C firmware/esp32/host_tests test` | **27/27 tests, 347 checks** |
+| Firmware compiled for an ESP32 target | **Not done.** The toolchain could not be downloaded here. |
+| Hardware tested | **Not done.** No boards. |
+| Through-wall validated | **Not done.** UNVERIFIED. |
+| PowerShell scripts | Written, **never executed** |
+
+### Still unverified
+
+* Everything that depends on radio behaviour:
+  * real packet rates and drops;
+  * whether CSI changes enough with a person moving behind the user's wall;
+  * the thresholds on real data;
+  * the false-alarm rate;
+  * whether target-room motion can be told apart from near-side motion.
+* The firmware compiling with GCC for Xtensa/RISC-V, linking, and running.
+* The ESP32-C5/C6/C61 paths.
+* The ESP-NOW `tx_seq` payload offset on real frames.
+
+### Next real experiment
+
+1. Get one ESP32-S3-DevKitC-1U with a matching 2.4 GHz antenna and a data USB cable.
+2. Install ESP-IDF v5.5.5. Build `roomsense_csi_rx` in router-ping mode and flash it yourself.
+3. Add the receiver to `configs/roomsense.toml`, start **Live**, and confirm RSHELLO, the measured rate and the documented layout on the Dashboard.
+4. In the same room, record a quiet baseline and do a walk test.
+5. Only then move to a through-wall layout (`docs/PLACEMENT.md`) and run protocol S1–S6 (`VALIDATION_REPORT.md`).
