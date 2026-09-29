@@ -25,3 +25,10 @@ They say nothing about how well sensing works. Every fixture is labelled with it
 * The upstream receive callbacks print from inside the Wi-Fi task. ESP-IDF says
   not to do lengthy work in that callback. The RoomSense firmware copies the data
   into a bounded queue instead and prints from a separate task.
+
+## Firmware and host agreement
+
+`test_acq_parser.py` cross-checks `firmware/esp32/host_tests/golden_rscsi_lines.txt`
+field by field against `golden_rscsi_expected.jsonl`. The C formatter in the
+firmware produces both files: it runs on the host, with values chosen by hand, so
+they are synthetic. If the files are missing, the test skips and says so.

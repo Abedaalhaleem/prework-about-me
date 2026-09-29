@@ -17,6 +17,14 @@ by bumping the version number that follows each tag.
   lines that got interleaved or truncated.
 * The host rejects any line longer than `acquisition.max_line_bytes` (default
   8192) before parsing it.
+* The line-length limit does not count the trailing `\r\n`. The CRC is checked
+  **before** the version number, so a record with a valid CRC and an unknown
+  version is rejected as `UNSUPPORTED_VERSION`.
+* The host learns the CSI layout configuration (`ltf_config`) of an `RSCSI` stream
+  **only** from `RSHELLO`. Frames that arrive before the first hello (for example
+  when the host attaches mid-stream) are kept and recorded, but flagged
+  `UNKNOWN_LAYOUT`, and processing rejects them. That is why the firmware
+  repeats `RSHELLO` every few seconds.
 * `NA` means the field is unavailable. The host maps it to `None` and never
   substitutes a number.
 * Integers are decimal. The CSI payload is lowercase hex: two hex digits per

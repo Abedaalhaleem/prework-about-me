@@ -64,6 +64,8 @@ __all__ = [
     "RoomGeometry",
     "CalibrationKind",
     "CalibrationRecord",
+    "WalkTestLinkReport",
+    "WalkTestReport",
     "ZoneState",
     "ZonePrediction",
     "PoseStatus",
@@ -586,6 +588,29 @@ class CalibrationRecord(_Model):
     valid: bool
     invalidated_reason: str | None = None
     summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class WalkTestLinkReport(_Model):
+    """Per-link walk-test summary (same-room check; NOT through-wall evidence)."""
+
+    link_id: str
+    max_score: float | None
+    motion_window_fraction: float | None
+    windows: int
+    motion_windows: int = 0
+    undecided_windows: int = 0
+    offline_windows: int = 0
+    detected: bool
+    reasons: list[str] = Field(default_factory=list)
+
+
+class WalkTestReport(_Model):
+    session_id: str | None
+    source_mode: SourceMode | None
+    started_at_unix_ns: int | None
+    ended_at_unix_ns: int | None
+    links: list[WalkTestLinkReport] = Field(default_factory=list)
+    note: str = "A same-room walk test does not establish behind-wall performance."
 
 
 # ---------------------------------------------------------------------------

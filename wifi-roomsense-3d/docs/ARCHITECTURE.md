@@ -266,3 +266,61 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
   "gaps": [{"start": .., "end": ..}]
 }
 ```
+
+## Conventions settled during implementation
+
+### Link events and end of stream
+
+* `LinkEvent.data` for each kind:
+
+  | kind | data |
+  |---|---|
+  | `PARSE_ERROR` | `{code, count, summary?}`. Always sum `count`, because events are rate-limited to 20/s per receiver and aggregated. |
+  | `HELLO` | the `HelloRecord` fields (including `rate_hz`), `notices` (`IDENTITY_CHANGED`, `DECLARED_CHIP_MISMATCH`, `LTF_CONFIG_MISMATCH`, `TX_MAC_FILTER_MISMATCH`) and `changed_fields` |
+  | `STAT` | the `StatRecord` fields |
+  | `DIAGNOSTIC` | `{looks_like?}` or `{suppressed: n}` |
+  | `RECONNECTING` | `{delay_s}` |
+  | replayed events | `{replayed: true, recorded_host_unix_ns}` |
+  | simulated events | `{simulated: true}` |
+
+* `EndOfStream.reason` is one of `END_OF_RECORDING`, `END_OF_SCENARIO` or `ERROR: <detail>`.
+  The manager maps `ERROR…` to `SourceState.ERROR` and everything else to `FINISHED`.
+
+### Event delivery and the host queue
+
+* `AcquisitionManager` delivers events synchronously on the source thread, one event
+  at a time. The runtime therefore puts events on its own bounded queue, sized by
+  `acquisition.frame_queue_size`, and processes them on a single processing thread.
+* If that queue ever overflows, the dropped events are **counted and reported**
+  (link status and notes), never dropped silently.
+
+### Simulated flag
+
+* `SystemStatus.simulated` is true when the active source mode is `SIMULATION`.
+* It is also true when `active.describe()["simulated"]` is true. That covers a REPLAY of
+  a simulated recording, and a recording of such a replay.
+
+### `SignalSnapshot`
+
+* `amplitude.v` is indexed `[time][subcarrier]`, aligned with `amplitude.t` and
+  `amplitude.k`. A gap marker is a row of nulls.
+* `score`, `rate_hz` and `rssi_dbm` share the results time axis.
+* `score.state` is null at gap markers.
+
+### Reason strings
+
+* Reasons have the form `"CODE: human text"`, with the primary code first.
+  Match on the prefix.
+
+### Additive public APIs (beyond the contract above)
+
+* **Synthetic:** `with_seed(scenario, seed)`; `SyntheticScenario.{description, node_positions, room_size_m, zones, params}`;
+  `SYNTHETIC_ZONES`; `zone_session_scenario(label, *, seed, duration_s=60, links=None, rate_hz=25, environment_seed=...)`;
+  `generate_frames(..., start_unix_ns=None, start_monotonic_ns=None)`.
+* **Manager:** `.mode`, `.detail`, `.remove_consumer()`.
+* **Replay:** `original_is_synthetic(path)`.
+* **Processing:** `ProcessingEngine(cfg, *, clock_ns, clock_unix_ns)`; `start_walk_test(link_ids=None)`; `stop_walk_test()`
+  returns `{link_id: {max_score, motion_window_fraction, windows, motion_windows, undecided_windows, offline_windows, detected, reasons}}`;
+  `calibration_progress()`, `is_calibrating()`, `baseline_status()`, `drift_status()`, `link_stats()`, `engine_stats()`,
+  `link_ids()`, `invalidate_baselines(reason, link_ids=None)`; `convert_frame()` returns a sample or a `FrameRejection`.
+* **Offline replays:** windows follow the data timeline. Call `ProcessingEngine.step()` at least once per `hop_s` of data time.
