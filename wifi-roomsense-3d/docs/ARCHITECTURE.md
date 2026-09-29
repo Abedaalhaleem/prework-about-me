@@ -375,3 +375,16 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
   (rows = true class, columns = predicted class) with a sibling `labels` list, and
   includes `abstention_rate`.
 * **`POST /api/calibration/walk-test/stop`.** Returns `WalkTestReport`.
+
+### Hardware inspection (`roomsense/hardware.py`)
+
+The inspection is non-destructive. It never opens serial ports, and it runs only
+commands on an allow-list, each with a timeout.
+
+* `inspect_host(*, redact=True) -> dict` with `format="roomsense-hardware-report-v1"`. Top-level keys:
+  `generated_at_utc`, `generator`, `scope`, `identifiers_redacted`, `host`, `virtualisation`,
+  `detected{serial_ports, serial_port_error, serial_permissions, network_interfaces, wifi_interface_listings}`,
+  `software`, `pc_csi_research_paths`, `recommended`, `commands_run`, `errors`, `assessment`.
+* `assess(report) -> {csi_path_available, csi_path_confirmed (always false; only RSHELLO in LIVE mode confirms), hardware_required, confidence, candidate_ports, reasons, next_steps}`.
+* `render_markdown(report) -> str`.
+* `GET /api/hardware` calls it from a sync endpoint, so it runs in the threadpool.

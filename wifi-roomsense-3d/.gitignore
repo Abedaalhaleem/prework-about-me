@@ -27,3 +27,4 @@ firmware/esp32/**/managed_components/
 firmware/esp32/host_tests/build/
 
 .DS_Store
+HARDWARE_REPORT.local.md

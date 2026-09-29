@@ -48,7 +48,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence, TypeVar
 
 __all__ = [
     "REPORT_FORMAT",
@@ -72,6 +72,8 @@ __all__ = [
     "assess",
     "render_markdown",
 ]
+
+_T = TypeVar("_T")
 
 REPORT_FORMAT = "roomsense-hardware-report-v1"
 
@@ -191,8 +193,13 @@ def forbidden_reason(argv: Sequence[str]) -> str | None:
     if prog == "nmcli" and "wifi" in args:
         # "nmcli dev wifi" lists (and may trigger a scan of) nearby networks.
         return "Wi-Fi scanning is never performed"
-    if prog == "netsh" and "wlan" in args and any(
-        a.startswith(("networks", "mode=bssid")) or a in ("connect", "disconnect", "set", "add", "delete") for a in args
+    if (
+        prog == "netsh"
+        and "wlan" in args
+        and any(
+            a.startswith(("networks", "mode=bssid")) or a in ("connect", "disconnect", "set", "add", "delete")
+            for a in args
+        )
     ):
         return "Wi-Fi scanning or reconfiguration is never performed"
     if prog == "airport" and any(a == "-s" or a.startswith("--scan") for a in args):
@@ -401,6 +408,14 @@ def _read_text(path: Path, limit: int = MAX_PROC_READ_BYTES) -> str | None:
         return None
 
 
+def _exists(path: Path) -> bool | None:
+    """``Path.exists()`` that reports ``None`` instead of raising (e.g. EACCES)."""
+    try:
+        return path.exists()
+    except OSError:
+        return None
+
+
 def _readlink_name(path: Path) -> str | None:
     try:
         return Path(os.readlink(path)).name or None
@@ -554,7 +569,7 @@ def linux_network_interfaces(base: Path | None = None) -> list[dict[str, Any]]:
         dev = entry / "device"
         driver = _readlink_name(dev / "driver")
         phy = _readlink_name(entry / "phy80211")
-        wireless = (entry / "wireless").exists() or phy is not None
+        wireless = bool(_exists(entry / "wireless")) or phy is not None
 
         def _id(name: str) -> str | None:
             for candidate in (dev / name, dev / ".." / name):
@@ -705,19 +720,34 @@ class _Inspector:
 
     # -- sections ------------------------------------------------------------
 
+    def section(self, name: str, fn: Callable[[], _T], default: _T) -> _T:
+        """Run one inspection section; a failure is recorded, not raised.
+
+        The Hardware page must still render when one probe breaks on an
+        unusual system, and the error must be visible rather than hidden.
+        """
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 - report any failure, keep the rest
+            self.errors.append(f"{name} inspection failed: {type(exc).__name__}: {exc}")
+            return default
+
     def host(self) -> dict[str, Any]:
+        # platform.platform() and platform.processor() are avoided on purpose:
+        # on Linux they spawn "uname -p", which is outside the allow-list.
+        system, release, machine = platform.system(), platform.release(), platform.machine()
         info: dict[str, Any] = {
-            "system": platform.system() or None,
-            "release": platform.release() or None,
+            "system": system or None,
+            "release": release or None,
             "version": platform.version() or None,
-            "machine": platform.machine() or None,
-            "platform": platform.platform() or None,
+            "machine": machine or None,
+            "platform": "-".join(x for x in (system, release, machine) if x) or None,
             "os_pretty_name": None,
             "cpu_model": None,
             "cpu_count": os.cpu_count(),
             "ram_total_bytes": None,
         }
-        system = self.system
+        system = self.system  # may differ from platform.system() in tests that simulate another OS
         if system == "Linux":
             try:
                 info["os_pretty_name"] = platform.freedesktop_os_release().get("PRETTY_NAME")
@@ -743,7 +773,7 @@ class _Inspector:
         elif system == "Windows":
             rel, ver = platform.win32_ver()[:2]
             info["os_pretty_name"] = f"Windows {rel} ({ver})" if rel else None
-            info["cpu_model"] = os.environ.get("PROCESSOR_IDENTIFIER") or platform.processor() or None
+            info["cpu_model"] = os.environ.get("PROCESSOR_IDENTIFIER") or None
             info["ram_total_bytes"] = _windows_total_ram()
         return info
 
@@ -766,7 +796,7 @@ class _Inspector:
 
     def esp_idf(self) -> dict[str, Any]:
         idf_path = os.environ.get("IDF_PATH") or None
-        exists = Path(idf_path).is_dir() if idf_path else None
+        exists = _exists(Path(idf_path)) if idf_path else None
         r = self.run(("idf.py", "--version"), timeout_s=IDF_TIMEOUT_S)
         output = (r["stdout"] or r["stderr"]).strip() or None
         version = None
@@ -799,8 +829,8 @@ class _Inspector:
             "usb_bus_visible": None,
         }
         if system == "Linux":
-            info["dockerenv_file"] = Path("/.dockerenv").exists()
-            info["containerenv_file"] = Path("/run/.containerenv").exists()
+            info["dockerenv_file"] = _exists(Path("/.dockerenv"))
+            info["containerenv_file"] = _exists(Path("/run/.containerenv"))
             cg = (_read_text(PROC_1_CGROUP, 16384) or "").lower()
             info["cgroup_hints"] = sorted(
                 {k for k in ("docker", "kubepods", "containerd", "lxc", "libpod", "podman", "garden") if k in cg}
@@ -813,7 +843,7 @@ class _Inspector:
                 if r["found"] and not r["timed_out"] and r["returncode"] is not None:
                     value = r["stdout"].strip()
                     info[key] = value if value and value != "none" else "none"
-            info["usb_bus_visible"] = SYS_BUS_USB.exists()
+            info["usb_bus_visible"] = _exists(SYS_BUS_USB)
         elif system == "Darwin":
             r = self.run(("sysctl", "-n", "kern.hv_vmm_present"))
             if r["returncode"] == 0 and r["stdout"].strip() in ("0", "1"):
@@ -832,7 +862,12 @@ class _Inspector:
             parts.append(f"container ({sdv_c})" if sdv_c not in (None, "none") else "container")
         if vm:
             parts.append(f"virtual machine ({sdv_v})" if sdv_v not in (None, "none") else "virtual machine")
-        summary = " inside a ".join(parts) if parts else "no virtualisation hints found"
+        if parts:
+            summary = " inside a ".join(parts)
+        elif system in ("Linux", "Darwin"):
+            summary = "no virtualisation hints found"
+        else:
+            summary = "virtualisation was not checked on this operating system"
         if info["usb_bus_visible"] is False:
             summary += "; no USB bus is visible, so USB boards cannot be attached to this environment"
         info["summary"] = summary[0].upper() + summary[1:]
@@ -848,19 +883,30 @@ class _Inspector:
             r = self.run(("iw", "dev"))
             if r["found"]:
                 listings.append(
-                    {"command": "iw dev", "returncode": r["returncode"], "timed_out": r["timed_out"],
-                     "output": r["stdout"] or r["stderr"], "parsed": _parse_iw_dev(r["stdout"])}
+                    {
+                        "command": "iw dev",
+                        "returncode": r["returncode"],
+                        "timed_out": r["timed_out"],
+                        "output": r["stdout"] or r["stderr"],
+                        "parsed": _parse_iw_dev(r["stdout"]),
+                    }
                 )
         elif system == "Darwin":
             r = self.run(("networksetup", "-listallhardwareports"))
             if r["found"]:
                 parsed = _parse_networksetup(r["stdout"])
                 interfaces = [
-                    {"name": p["device"], "hardware_port": p["hardware_port"], "wireless": p["wireless"]} for p in parsed
+                    {"name": p["device"], "hardware_port": p["hardware_port"], "wireless": p["wireless"]}
+                    for p in parsed
                 ]
                 listings.append(
-                    {"command": "networksetup -listallhardwareports", "returncode": r["returncode"],
-                     "timed_out": r["timed_out"], "output": r["stdout"] or r["stderr"], "parsed": parsed}
+                    {
+                        "command": "networksetup -listallhardwareports",
+                        "returncode": r["returncode"],
+                        "timed_out": r["timed_out"],
+                        "output": r["stdout"] or r["stderr"],
+                        "parsed": parsed,
+                    }
                 )
         elif system == "Windows":
             r = self.run(("netsh", "wlan", "show", "interfaces"))
@@ -868,8 +914,13 @@ class _Inspector:
                 parsed = _parse_netsh_interfaces(r["stdout"])
                 interfaces = parsed
                 listings.append(
-                    {"command": "netsh wlan show interfaces", "returncode": r["returncode"],
-                     "timed_out": r["timed_out"], "output": r["stdout"] or r["stderr"], "parsed": parsed}
+                    {
+                        "command": "netsh wlan show interfaces",
+                        "returncode": r["returncode"],
+                        "timed_out": r["timed_out"],
+                        "output": r["stdout"] or r["stderr"],
+                        "parsed": parsed,
+                    }
                 )
         return interfaces, listings
 
@@ -936,13 +987,14 @@ def inspect_host(*, redact: bool = True) -> dict[str, Any]:
     numbers and the home directory in the output. Keep such a report private.
     """
     ins = _Inspector(redact=redact, system=platform.system())
-    host = ins.host()
-    virt = ins.virtualisation()
+    host = ins.section("host", ins.host, {})
+    virt = ins.section("virtualisation", ins.virtualisation, {"summary": "unavailable (inspection failed)"})
     ports, port_error = list_serial_ports_readonly(redact=redact)
     if port_error:
         ins.errors.append(port_error)
-    interfaces, listings = ins.network()
-    software = ins.software()
+    interfaces, listings = ins.section("network", ins.network, ([], []))
+    software = ins.section("software", ins.software, {})
+    permissions = ins.section("serial_permissions", ins.serial_permissions, {"applicable": None})
     report: dict[str, Any] = {
         "format": REPORT_FORMAT,
         "generated_at_utc": _utc_now_iso(),
@@ -957,7 +1009,7 @@ def inspect_host(*, redact: bool = True) -> dict[str, Any]:
         "detected": {
             "serial_ports": ports,
             "serial_port_error": port_error,
-            "serial_permissions": ins.serial_permissions(),
+            "serial_permissions": permissions,
             "network_interfaces": interfaces,
             "wifi_interface_listings": listings,
         },
@@ -990,6 +1042,14 @@ def _get(d: Mapping[str, Any] | None, *keys: str) -> Any:
     return cur
 
 
+def _as_list(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
 def assess(report: Mapping[str, Any]) -> dict[str, Any]:
     """Decide whether the documented CSI acquisition path is possibly present.
 
@@ -998,12 +1058,12 @@ def assess(report: Mapping[str, Any]) -> dict[str, Any]:
     *confirmed*: the inspector never opens ports, and only RSHELLO lines seen
     by the LIVE source prove that RoomSense firmware is talking.
     """
-    ports = list(_get(report, "detected", "serial_ports") or [])
+    ports = _as_list(_get(report, "detected", "serial_ports"))
     port_error = _get(report, "detected", "serial_port_error")
-    interfaces = list(_get(report, "detected", "network_interfaces") or [])
-    idf = _get(report, "software", "esp_idf") or {}
-    virt = _get(report, "virtualisation") or {}
-    perms = _get(report, "detected", "serial_permissions") or {}
+    interfaces = _as_list(_get(report, "detected", "network_interfaces"))
+    idf = _as_mapping(_get(report, "software", "esp_idf"))
+    virt = _as_mapping(_get(report, "virtualisation"))
+    perms = _as_mapping(_get(report, "detected", "serial_permissions"))
     system = _get(report, "host", "system")
 
     candidates = [p for p in ports if isinstance(p, Mapping) and p.get("esp32_candidate")]
@@ -1026,7 +1086,9 @@ def assess(report: Mapping[str, Any]) -> dict[str, Any]:
         other = [p.get("device") for p in ports if isinstance(p, Mapping)]
         if other:
             reasons.append(
-                "Serial ports were found but none has a USB vendor ID used on ESP32 boards: " + ", ".join(map(str, other)) + "."
+                "Serial ports were found but none has a USB vendor ID used on ESP32 boards: "
+                + ", ".join(map(str, other))
+                + "."
             )
         else:
             reasons.append("No serial ports were found.")
@@ -1040,8 +1102,10 @@ def assess(report: Mapping[str, Any]) -> dict[str, Any]:
         for i in wireless:
             if i.get("research_tool_hint"):
                 reasons.append(f"{i.get('name')}: {i['research_tool_hint']}")
-    else:
+    elif interfaces:
         reasons.append("No wireless network interface was found (this does not matter for the ESP32 path).")
+    else:
+        reasons.append("Network interfaces could not be listed here (this does not matter for the ESP32 path).")
 
     if virt.get("usb_bus_visible") is False or virt.get("likely_container"):
         reasons.append(f"Environment: {virt.get('summary')}.")
@@ -1056,9 +1120,12 @@ def assess(report: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append(f"ESP-IDF {idf.get('version')} found; RoomSense firmware is pinned to {PINNED_IDF_VERSION}.")
 
     if not candidates:
-        next_steps.append("Get the boards listed in docs/PARTS_LIST.md (verify before buying; RoomSense never buys anything).")
         next_steps.append(
-            "Connect a receiver with a data-capable USB cable to its USB-to-UART port, then re-run: " + REGENERATE_COMMAND
+            "Get the boards listed in docs/PARTS_LIST.md (verify before buying; RoomSense never buys anything)."
+        )
+        next_steps.append(
+            "Connect a receiver with a data-capable USB cable to its USB-to-UART port, then re-run: "
+            + REGENERATE_COMMAND
         )
     else:
         next_steps.append("Unplug the board and re-run the inspection to confirm which port belongs to it.")
@@ -1120,16 +1187,16 @@ def _fence(text: str) -> str:
 def _fmt_bytes(n: Any) -> str:
     if not isinstance(n, int) or isinstance(n, bool):
         return "unavailable"
-    return f"{n / (1024 ** 3):.1f} GiB ({n} bytes)"
+    return f"{n / (1024**3):.1f} GiB ({n} bytes)"
 
 
 def render_markdown(report: Mapping[str, Any]) -> str:
     """Human-readable Markdown for a report produced by :func:`inspect_host`."""
-    a = report.get("assessment") or assess(report)
-    host = report.get("host") or {}
-    virt = report.get("virtualisation") or {}
-    det = report.get("detected") or {}
-    sw = report.get("software") or {}
+    a = _as_mapping(report.get("assessment")) or assess(report)
+    host = _as_mapping(report.get("host"))
+    virt = _as_mapping(report.get("virtualisation"))
+    det = _as_mapping(report.get("detected"))
+    sw = _as_mapping(report.get("software"))
     lines: list[str] = []
     add = lines.append
 
@@ -1203,7 +1270,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
 
     add("## Serial ports (listed with pyserial; never opened)")
     add("")
-    ports = det.get("serial_ports") or []
+    ports = [x for x in _as_list(det.get("serial_ports")) if isinstance(x, Mapping)]
     if det.get("serial_port_error"):
         add(f"Enumeration problem: {det['serial_port_error']}")
         add("")
@@ -1223,7 +1290,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     else:
         add("No serial ports were listed.")
         add("")
-    perms = det.get("serial_permissions") or {}
+    perms = _as_mapping(det.get("serial_permissions"))
     if perms.get("applicable"):
         add(
             f"Serial permissions: in 'dialout' group: {_cell(perms.get('in_dialout_group'))}; "
@@ -1233,7 +1300,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
 
     add("## Network interfaces")
     add("")
-    ifaces = det.get("network_interfaces") or []
+    ifaces = [x for x in _as_list(det.get("network_interfaces")) if isinstance(x, Mapping)]
     if ifaces:
         add("| Name | Wireless | Driver | phy | Bus vendor:device | State |")
         add("|---|---|---|---|---|---|")
@@ -1244,16 +1311,17 @@ def render_markdown(report: Mapping[str, Any]) -> str:
                 f"{_cell(i.get('phy80211'))} | {_cell(bus)} | {_cell(i.get('operstate') or i.get('state'))} |"
             )
         add("")
-        for i in ifaces:
-            if i.get("research_tool_hint"):
-                add(f"* `{i.get('name')}`: {i['research_tool_hint']}")
-        add("")
+        hints = [i for i in ifaces if i.get("research_tool_hint")]
+        for i in hints:
+            add(f"* `{i.get('name')}`: {i['research_tool_hint']}")
+        if hints:
+            add("")
     else:
         add("No network interfaces were listed.")
         add("")
     add(_NOT_EVIDENCE)
     add("")
-    listings = det.get("wifi_interface_listings") or []
+    listings = [x for x in _as_list(det.get("wifi_interface_listings")) if isinstance(x, Mapping)]
     if listings:
         add("### Wi-Fi interface listings (read-only; never a scan)")
         add("")
@@ -1265,46 +1333,58 @@ def render_markdown(report: Mapping[str, Any]) -> str:
 
     add("## ESP-IDF")
     add("")
-    idf = sw.get("esp_idf") or {}
+    idf = _as_mapping(sw.get("esp_idf"))
     add(f"* IDF_PATH set: {_cell(idf.get('idf_path_set'))} ({_cell(idf.get('idf_path'))})")
     add(f"* idf.py on PATH: {_cell(idf.get('idf_py_on_path'))}")
-    add(f"* Version: {_cell(idf.get('version'))}; pinned: {PINNED_IDF_VERSION}; matches: {_cell(idf.get('matches_pinned'))}")
+    add(
+        f"* Version: {_cell(idf.get('version'))}; pinned: {PINNED_IDF_VERSION}; matches: {_cell(idf.get('matches_pinned'))}"
+    )
     add(f"* {idf.get('note', '')}")
     add("")
 
     add("## Research CSI paths for PCs (not installed, not used)")
     add("")
-    for p in report.get("pc_csi_research_paths") or []:
-        add(f"* **{p.get('name')}** - hardware: {p.get('hardware')}. Requires: {p.get('requires')} Source: {p.get('source')}.")
+    for p in [x for x in _as_list(report.get("pc_csi_research_paths")) if isinstance(x, Mapping)]:
+        add(
+            f"* **{p.get('name')}** - hardware: {p.get('hardware')}. Requires: {p.get('requires')} Source: {p.get('source')}."
+        )
     add("")
     add(_PC_PATH_STATUS)
     add("")
 
-    rec = report.get("recommended") or {}
+    rec = _as_mapping(report.get("recommended"))
     add("## Recommended hardware (NOT detected - recommendations only)")
     add("")
     add(str(rec.get("note", "")))
     add("")
-    path = rec.get("acquisition_path") or {}
-    for key in ("summary", "receiver_firmware", "transmitter_firmware", "sdk", "reference_firmware", "serial", "confirmation"):
+    path = _as_mapping(rec.get("acquisition_path"))
+    for key in (
+        "summary",
+        "receiver_firmware",
+        "transmitter_firmware",
+        "sdk",
+        "reference_firmware",
+        "serial",
+        "confirmation",
+    ):
         if path.get(key):
             add(f"* {key.replace('_', ' ')}: {path[key]}")
     add("")
     add("| Preference | Ordering code | Module | Antenna | CSI layout | Source |")
     add("|---|---|---|---|---|---|")
-    for b in rec.get("boards") or []:
+    for b in [x for x in _as_list(rec.get("boards")) if isinstance(x, Mapping)]:
         add(
             f"| {_cell(b.get('preference'))} | {_cell(b.get('ordering_code'))} | {_cell(b.get('module'))} | "
             f"{_cell(b.get('antenna'))} | {_cell(b.get('csi_layout'))} | {_cell(b.get('source'))} |"
         )
     add("")
-    for q in rec.get("upstream_advice") or []:
-        add(f"> \"{q.get('quote')}\" ({q.get('source')})")
+    for q in [x for x in _as_list(rec.get("upstream_advice")) if isinstance(x, Mapping)]:
+        add(f'> "{q.get("quote")}" ({q.get("source")})')
         add("")
 
     add("## Commands run")
     add("")
-    cmds = report.get("commands_run") or []
+    cmds = [x for x in _as_list(report.get("commands_run")) if isinstance(x, Mapping)]
     if cmds:
         add("| Command | Found | Exit code | Timed out | Seconds | Refused |")
         add("|---|---|---|---|---|---|")
@@ -1316,7 +1396,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     else:
         add("No external commands were run.")
     add("")
-    errors = report.get("errors") or []
+    errors = _as_list(report.get("errors"))
     if errors:
         add("## Errors")
         add("")
