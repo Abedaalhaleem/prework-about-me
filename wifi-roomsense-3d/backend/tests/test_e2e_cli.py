@@ -1,0 +1,182 @@
+"""End-to-end tests of the ``roomsense`` command line.
+
+The live capture reads from a fake serial port (hand-made firmware lines);
+``simulate`` writes clearly flagged synthetic data. Nothing here touches
+hardware or says anything about sensing accuracy.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+import roomsense.acquisition.serial_source as serial_source
+from roomsense import __version__
+from roomsense.cli import main
+from tests.api_helpers import PacedSerialFactory, _no_api_token_in_env  # noqa: F401  (autouse fixture)
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def _write_cfg(tmp_path: Path) -> Path:
+    data = tmp_path / "data"
+    q = json.dumps  # JSON string escaping is valid for TOML basic strings
+    text = f"""
+[storage]
+data_dir = {q(str(data))}
+
+[room]
+geometry_file = {q(str(data / "room.json"))}
+
+[acquisition]
+reconnect_initial_s = 0.02
+reconnect_max_s = 0.1
+stale_after_s = 0.5
+
+[[acquisition.receivers]]
+receiver_id = "rx1"
+port = "/dev/fake-rx1"
+input_format = "roomsense-rscsi-v1"
+transmitter_id = "tx1"
+"""
+    path = tmp_path / "roomsense.toml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _json_out(capsys: pytest.CaptureFixture[str]) -> Any:
+    return json.loads(capsys.readouterr().out)
+
+
+def test_simulate_writes_flagged_file_and_replay_info_reads_it(tmp_path: Path,
+                                                               capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = str(_write_cfg(tmp_path))
+    out = tmp_path / "sim.jsonl.gz"
+    assert main(["simulate", "--config", cfg, "--scenario", "disconnect", "--seed", "3", "--out", str(out)]) == 0
+    assert "SIMULATED" in capsys.readouterr().out
+    assert out.is_file()
+    assert main(["simulate", "--config", cfg, "--scenario", "disconnect", "--out", str(out)]) == 2  # no overwrite
+    assert main(["simulate", "--config", cfg, "--scenario", "nope", "--out", str(tmp_path / "x.gz")]) == 2
+    capsys.readouterr()
+
+    assert main(["replay-info", str(out)]) == 0
+    captured = capsys.readouterr()
+    info = json.loads(captured.out)
+    assert info["synthetic"] is True and info["source_mode"] == "SIMULATION"
+    assert info["original_source_mode"] == "SIMULATION" and info["complete"] is True
+    assert list(info["frames_per_link"]) == ["tx1->rx1"]
+    assert 2240 <= info["frames_per_link"]["tx1->rx1"] <= 2260  # ~90 s at 25 Hz, then the simulated disconnect
+    assert "SIMULATED" in captured.err
+    assert main(["replay-info", str(tmp_path / "missing.gz")]) == 2
+
+
+def test_capture_refuses_without_consent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = str(_write_cfg(tmp_path))
+    base = ["capture", "--config", cfg, "--receiver", "rx1", "--seconds", "1", "--label", "x"]
+    assert main(base) == 2
+    err = capsys.readouterr().err
+    assert "consent is required" in err and "consent-v1" in err
+    assert main(base + ["--consent-all-participants", "--purpose", "test"]) == 2  # participant count missing
+    assert main(base + ["--participants", "1", "--purpose", "test"]) == 2  # confirmation missing
+    assert not (tmp_path / "data").exists()  # nothing was opened or written
+
+
+def test_capture_records_live_then_list_export_delete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                      capsys: pytest.CaptureFixture[str]) -> None:
+    factory = PacedSerialFactory(rate_hz=50)
+    monkeypatch.setattr(serial_source, "_default_serial_factory", factory)
+    cfg = str(_write_cfg(tmp_path))
+    assert main(["capture", "--config", cfg, "--receiver", "rx9", "--seconds", "1", "--label", "x",
+                 "--consent-all-participants", "--participants", "1", "--purpose", "test"]) == 2  # unknown receiver
+    capsys.readouterr()
+    rc = main(["capture", "--config", cfg, "--receiver", "rx1", "--seconds", "1.2", "--label", "desk test",
+               "--consent-all-participants", "--participants", "1", "--purpose", "software test"])
+    assert rc == 0
+    info = _json_out(capsys)
+    assert info["status"] == "COMPLETE" and info["source_mode"] == "LIVE" and info["synthetic"] is False
+    assert info["frames"] > 20 and info["label"] == "desk test"
+    rid = info["recording_id"]
+
+    assert main(["recordings", "list", "--config", cfg, "--json"]) == 0
+    assert [r["recording_id"] for r in _json_out(capsys)] == [rid]
+    assert main(["recordings", "list", "--config", cfg]) == 0
+    assert rid in capsys.readouterr().out
+
+    assert main(["recordings", "export", "--config", cfg, rid]) == 0
+    zip_path = Path(capsys.readouterr().out.strip())
+    with zipfile.ZipFile(zip_path) as zf:
+        assert "PROVENANCE.txt" in zf.namelist()
+
+    assert main(["recordings", "delete", "--config", cfg, rid]) == 0
+    assert not (tmp_path / "data" / "recordings" / f"{rid}.jsonl.gz").exists()
+    assert main(["recordings", "delete", "--config", cfg, rid]) == 1
+
+
+def test_validate_report_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = str(_write_cfg(tmp_path))
+    assert main(["validate-report", "--config", cfg, "--markdown"]) == 0
+    assert capsys.readouterr().out.startswith("# RoomSense through-wall validation report")
+    assert main(["validate-report", "--config", cfg]) == 0
+    assert _json_out(capsys)["through_wall_status"] == "UNVERIFIED"
+
+
+def test_ports_cli(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    fake = [{"device": "/dev/ttyUSB3", "description": "CP2102 USB to UART", "hwid": "x", "vid": 0x10C4,
+             "pid": 0xEA60, "likely_usb_uart_bridge": True}]
+    monkeypatch.setattr(serial_source, "list_serial_ports", lambda: fake)
+    assert main(["ports"]) == 0
+    out = capsys.readouterr().out
+    assert "/dev/ttyUSB3" in out and "does not prove" in out
+    assert main(["ports", "--json"]) == 0
+    assert _json_out(capsys) == fake
+
+
+def test_serve_refuses_unsafe_bind_before_starting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                   capsys: pytest.CaptureFixture[str]) -> None:
+    import uvicorn
+
+    def never(*_: Any, **__: Any) -> None:
+        raise AssertionError("uvicorn must not start")
+
+    monkeypatch.setattr(uvicorn, "run", never)
+    cfg = str(_write_cfg(tmp_path))
+    assert main(["serve", "--config", cfg, "--host", "0.0.0.0"]) == 2
+    assert "allow_non_loopback" in capsys.readouterr().err
+    assert main(["serve", "--config", str(tmp_path / "missing.toml")]) == 2
+
+
+def test_serve_runs_uvicorn_on_loopback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import uvicorn
+
+    import roomsense.logging_setup as logging_setup
+
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw, app=app))
+    monkeypatch.setattr(logging_setup, "configure_logging", lambda *a, **k: None)
+    cfg = str(_write_cfg(tmp_path))
+    assert main(["serve", "--config", cfg, "--port", "8799"]) == 0
+    assert seen["host"] == "127.0.0.1" and seen["port"] == 8799
+    assert seen["log_config"] is None and seen["access_log"] is False
+    assert seen["app"].title == "WiFi RoomSense 3D"
+
+
+def test_zone_train_cli_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = str(_write_cfg(tmp_path))
+    assert main(["zone-train", "--config", cfg, "--sessions", "[{\"label\": \"A\"}]"]) == 2
+    assert main(["zone-train", "--config", cfg, "--sessions", str(tmp_path / "missing.json")]) == 2
+    spec = json.dumps([{"recording_id": "rec_missing", "label": "A", "split": "train"}])
+    assert main(["zone-train", "--config", cfg, "--sessions", spec]) == 1
+    assert "rec_missing" in capsys.readouterr().err
+
+
+def test_python_dash_m_entry_point() -> None:
+    r = subprocess.run([sys.executable, "-m", "roomsense", "--version"], cwd=BACKEND_DIR, capture_output=True,
+                       text=True, timeout=60, check=False)
+    assert r.returncode == 0
+    assert r.stdout.strip() == f"roomsense {__version__}"

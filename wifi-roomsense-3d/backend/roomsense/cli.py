@@ -71,13 +71,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except ValueError as exc:
         _err(f"invalid server settings: {exc}")
         return EXIT_USAGE
-    configure_logging(args.log_level, secrets=[api_token()])
     try:
-        check_bind_allowed(cfg)
-        app = create_app(cfg)
+        check_bind_allowed(cfg)  # before anything else, so a refused start changes nothing
     except StartupRefused as exc:
         _err(str(exc))
         return EXIT_USAGE
+    configure_logging(args.log_level, secrets=[api_token()])
+    app = create_app(cfg)
     import uvicorn
 
     host = cfg.server.host

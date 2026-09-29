@@ -6,6 +6,8 @@
   non-loopback bind without ``allow_non_loopback`` and an API token;
 * requires ``Authorization: Bearer <token>`` on every ``/api`` route and the
   WebSocket when a token is configured; checks the ``Host`` header on loopback;
+  refuses WebSocket handshakes and state-changing requests whose ``Origin`` is
+  another web page (see :mod:`roomsense.api.security`);
 * allows CORS only for ``server.cors_dev_origins``;
 * logs one structured line per request (method, path, status, duration) and
   never logs headers, bodies, query strings or tokens;
@@ -109,11 +111,15 @@ class RequestLogMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             status = status_holder["status"]
-            level = logging.WARNING if status >= 500 or status == 0 else logging.INFO
-            if status in (401, 403, 421):
+            method = str(scope.get("method", ""))
+            if status >= 500 or status == 0 or status in (401, 403, 421):
                 level = logging.WARNING
+            elif method in ("GET", "HEAD", "OPTIONS") and status < 400:
+                level = logging.DEBUG  # the UI polls; routine reads would flood the log
+            else:
+                level = logging.INFO
             log.log(level, "http request", extra={
-                "method": scope.get("method"),
+                "method": method,
                 "path": str(scope.get("path", ""))[:200],
                 "status": status,
                 "duration_ms": round((time.perf_counter() - start) * 1000, 1),
@@ -189,7 +195,6 @@ def create_app(
     app.state.runtime = runtime
     app.state.bind_host = cfg.server.host
     app.state.ws_clients = 0
-    app.state.token_required = bool(token)
 
     @app.exception_handler(OperationRefused)
     async def _refused(_: Request, exc: OperationRefused) -> JSONResponse:
@@ -212,7 +217,8 @@ def create_app(
         _install_placeholder(app)
 
     # Starlette runs the last-added middleware first: logging -> CORS -> security -> app.
-    app.add_middleware(SecurityMiddleware, token=token, enforce_loopback_host=cfg.server.is_loopback())
+    app.add_middleware(SecurityMiddleware, token=token, enforce_loopback_host=cfg.server.is_loopback(),
+                       allowed_origins=list(cfg.server.cors_dev_origins))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(cfg.server.cors_dev_origins),

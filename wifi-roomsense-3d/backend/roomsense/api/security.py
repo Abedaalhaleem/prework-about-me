@@ -16,6 +16,15 @@ Rules
   ``Host`` is not a loopback name are refused. This blocks DNS-rebinding
   attacks, in which a web page re-points its own domain at 127.0.0.1 to reach
   a local service from the browser.
+* **Origin check for WebSockets and state-changing requests.** Other web
+  pages open in the user's browser can still address ``127.0.0.1`` with a
+  correct ``Host`` header: CORS does not apply to WebSockets at all, and it
+  does not stop "simple" cross-site POSTs from being *executed*. So a
+  WebSocket handshake, or a POST/PUT/PATCH/DELETE, that carries an ``Origin``
+  header is refused unless that origin is this server itself (same scheme
+  host and port as the ``Host`` header) or one of ``server.cors_dev_origins``.
+  Requests without ``Origin`` (curl, the CLI, scripts) are not browser
+  cross-site requests and are unaffected; the token rules above still apply.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import json
+import urllib.parse
 from typing import Any, Awaitable, Callable, Iterable
 
 from ..config import AppConfig, api_token
@@ -37,8 +47,13 @@ __all__ = [
     "bearer_from_headers",
     "ws_offered_subprotocols",
     "ws_token",
+    "origin_allowed",
     "SecurityMiddleware",
 ]
+
+# Methods that change state. Cross-site reads (GET) are already blocked by
+# CORS; these are the requests a foreign page could make the server execute.
+_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 WS_SUBPROTOCOL = "roomsense.v1"
 BEARER_SUBPROTOCOL_PREFIX = "bearer."
@@ -146,17 +161,45 @@ def _is_loopback_name(name: str | None) -> bool:
         return False
 
 
+def _normalise_origin(origin: str) -> str:
+    return origin.strip().rstrip("/").lower()
+
+
+def origin_allowed(origin: str, host_header: str | None, allowed_origins: Iterable[str] = ()) -> bool:
+    """True if a browser ``Origin`` may drive this server.
+
+    Allowed are this server's own origin (the ``Origin`` authority equals the
+    ``Host`` header, which browsers set from the same URL) and the explicitly
+    configured ``allowed_origins`` (the Vite dev server). ``null`` origins
+    (sandboxed frames, ``file://`` pages) and non-HTTP schemes are refused.
+    """
+    norm = _normalise_origin(origin)
+    if norm in {_normalise_origin(o) for o in allowed_origins}:
+        return True
+    try:
+        parts = urllib.parse.urlsplit(norm)
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.netloc or not host_header:
+        return False
+    return parts.netloc == host_header.strip().lower()
+
+
 class SecurityMiddleware:
     """Pure ASGI middleware (works for HTTP and WebSocket scopes).
 
     ``token``: when set, required on ``/api`` HTTP routes and the WebSocket.
     ``enforce_loopback_host``: refuse non-loopback ``Host`` headers.
+    ``allowed_origins``: extra browser origins (besides this server's own)
+    that may open the WebSocket or send state-changing requests.
     """
 
-    def __init__(self, app: ASGIApp, *, token: str | None, enforce_loopback_host: bool) -> None:
+    def __init__(self, app: ASGIApp, *, token: str | None, enforce_loopback_host: bool,
+                 allowed_origins: Iterable[str] = ()) -> None:
         self.app = app
         self.token = token
         self.enforce_loopback_host = enforce_loopback_host
+        self.allowed_origins = frozenset(_normalise_origin(o) for o in allowed_origins if o.strip())
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         kind = scope.get("type")
@@ -168,6 +211,16 @@ class SecurityMiddleware:
                                "HOST_NOT_ALLOWED: this server only answers requests addressed to a loopback "
                                "host name (127.0.0.1, localhost or ::1)")
             return
+        if kind == "websocket" or str(scope.get("method") or "").upper() in _STATE_CHANGING_METHODS:
+            # Cross-site WebSocket hijacking / CSRF: another page in the user's
+            # browser must not read live status or start, stop or delete
+            # anything. Browsers always send Origin on these requests.
+            origin = _header(scope, b"origin")
+            if origin is not None and not origin_allowed(origin, _header(scope, b"host"), self.allowed_origins):
+                await self._reject(scope, send, 403 if kind == "http" else 1008,
+                                   "ORIGIN_NOT_ALLOWED: requests from other web pages are refused; open the "
+                                   "RoomSense UI itself")
+                return
         path = str(scope.get("path") or "")
         if self.token is not None and (path == "/api" or path.startswith("/api/")):
             given = bearer_from_headers(scope) if kind == "http" else ws_token(scope)

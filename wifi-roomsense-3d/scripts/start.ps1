@@ -39,6 +39,11 @@ $CheckHost = if ($HostName -in @('0.0.0.0', '::', '')) { '127.0.0.1' } else { $H
 $UrlHost = if ($CheckHost.Contains(':')) { "[$CheckHost]" } else { $CheckHost }
 $Url = "http://${UrlHost}:$Port"
 
+# Keep the log bounded: rotate it (one old copy) when it has grown past 10 MB.
+if ((Test-Path $LogFile) -and ((Get-Item $LogFile).Length -gt 10MB)) {
+    Move-Item -Force $LogFile "$LogFile.1"
+}
+
 $argList = @('run', '--frozen', 'roomsense', 'serve') + $args
 $proc = Start-Process -FilePath 'uv' -ArgumentList $argList -WorkingDirectory (Join-Path $Repo 'backend') `
     -RedirectStandardError $LogFile -RedirectStandardOutput $OutFile -WindowStyle Hidden -PassThru

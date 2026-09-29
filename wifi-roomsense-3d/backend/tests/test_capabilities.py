@@ -197,6 +197,23 @@ def test_finished_replay_disables_motion():
     assert by_id(build_capabilities(c))[CapabilityId.B_MOTION].state == CapabilityState.DISABLED
 
 
+def test_replay_of_simulated_data_is_never_called_measurements():
+    """A replay of a simulated recording is simulated data, not 'recorded measurements'."""
+    for baseline in (False, True):
+        caps = by_id(build_capabilities(ctx(source_mode=SourceMode.REPLAY, source_state=SourceState.RUNNING,
+                                            baseline_valid=baseline, zone_enabled=True, simulated=True)))
+        texts = [r for c in caps.values() for r in c.reasons]
+        assert not any("recorded measurements" in r for r in texts)
+        assert any(SIMULATION_ONLY_REASON in r for r in caps[CapabilityId.A_ACQUISITION].reasons)
+        assert any(SIMULATION_ONLY_REASON in r for r in caps[CapabilityId.B_MOTION].reasons)
+        # Even a (hypothetically) enabled zone model never runs on simulated data.
+        assert caps[CapabilityId.C_ZONE].state == CapabilityState.DISABLED
+        assert any("never enabled on simulated data" in r for r in caps[CapabilityId.C_ZONE].reasons)
+    # A replay of real recordings keeps its wording.
+    real = by_id(build_capabilities(ctx(source_mode=SourceMode.REPLAY, source_state=SourceState.RUNNING)))
+    assert any("Replay of recorded measurements" in r for r in real[CapabilityId.B_MOTION].reasons)
+
+
 def test_calibration_detail_is_surfaced():
     c = live_running(baseline_valid=False, calibration_detail="baseline rejected: too few windows")
     b = by_id(build_capabilities(c))[CapabilityId.B_MOTION]

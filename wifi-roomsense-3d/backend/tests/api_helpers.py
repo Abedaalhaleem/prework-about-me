@@ -194,10 +194,9 @@ class PacedSerial:
             raise serial.SerialException("port not open")
         with self._lock:
             self._fill()
-            if not self._buf:
-                if self._exhausted():
-                    raise serial.SerialException("device reports readiness to read but returned no data "
-                                                 "(device disconnected or multiple access on port?)")
+            if not self._buf and self._exhausted():
+                raise serial.SerialException("device reports readiness to read but returned no data "
+                                             "(device disconnected or multiple access on port?)")
         if not self._buf:
             time.sleep(min(self.timeout or 0.2, 1.0 / self.rate_hz))
             with self._lock:

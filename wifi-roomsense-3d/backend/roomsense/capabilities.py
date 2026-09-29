@@ -289,6 +289,10 @@ class CapabilityContext:
     pose_status: PoseStatus = field(default_factory=PoseStatus)
     through_wall_status: str = "UNVERIFIED"
     evidence: dict[str, Any] = field(default_factory=dict)
+    # True when the data are simulated: SIMULATION, or a REPLAY of a recording
+    # that holds simulated frames (SystemStatus.simulated). Such a replay must
+    # never be described as recorded measurements.
+    simulated: bool = False
 
     def __post_init__(self) -> None:
         # Accept plain strings from callers (e.g. "LIVE") but store the enums,
@@ -312,6 +316,7 @@ def _acquisition(ctx: CapabilityContext) -> tuple[CapabilityState, list[str]]:
     if mode == SourceMode.REPLAY:
         return CapabilityState.HARDWARE_REQUIRED, [
             "Replay of a recording is not live acquisition; frames are re-played, not measured now.",
+            *([f"The recording holds simulated data ({SIMULATION_ONLY_REASON})."] if ctx.simulated else []),
             "Connect ESP32 receivers and select the LIVE source to enable live acquisition.",
         ]
     if mode == SourceMode.SIMULATION:
@@ -344,6 +349,8 @@ def _motion(ctx: CapabilityContext) -> tuple[CapabilityState, list[str]]:
     reasons: list[str] = []
     if mode == SourceMode.SIMULATION:
         reasons.append(f"{SIMULATION_ONLY_REASON}.")
+    elif mode == SourceMode.REPLAY and ctx.simulated:
+        reasons.append(f"Replay of a simulated recording ({SIMULATION_ONLY_REASON}).")
     elif mode == SourceMode.REPLAY:
         reasons.append("Replay of recorded measurements, not live.")
     if ctx.calibration_detail:
@@ -372,7 +379,7 @@ def _motion(ctx: CapabilityContext) -> tuple[CapabilityState, list[str]]:
 
 def _zone(ctx: CapabilityContext) -> tuple[CapabilityState, list[str]]:
     zr = list(ctx.zone_reasons)
-    if ctx.source_mode == SourceMode.SIMULATION:
+    if ctx.source_mode == SourceMode.SIMULATION or ctx.simulated:
         return CapabilityState.DISABLED, [
             f"Zone estimation is never enabled on simulated data ({SIMULATION_ONLY_REASON}).",
             *zr,

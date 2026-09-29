@@ -54,6 +54,11 @@ case "$CHECK_HOST" in
 esac
 URL="http://$URL_HOST:$PORT"
 
+# Keep the log bounded: rotate it (one old copy) when it has grown past 10 MB.
+if [ -f "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE")" -gt 10485760 ]; then
+  mv -f "$LOG_FILE" "$LOG_FILE.1"
+fi
+
 cd "$REPO/backend"
 echo "--- $(date -u +%Y-%m-%dT%H:%M:%SZ) starting roomsense serve $* ---" >>"$LOG_FILE"
 nohup uv run --frozen roomsense serve "$@" >>"$LOG_FILE" 2>&1 </dev/null &

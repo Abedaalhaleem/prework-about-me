@@ -387,7 +387,6 @@ class AppRuntime:
         self._processing_errors = 0
         self._last_processing_error: str | None = None
         self._recording_note: str | None = None
-        self._room_note: str | None = None
 
         self._report_cache = _Cached()
         self._pose_cache = _Cached()
@@ -415,6 +414,7 @@ class AppRuntime:
             if self._started:
                 return
             self._started = True
+            self._recover_after_crash()
             try:
                 self.db.prune_activity_log(ACTIVITY_LOG_MAX_ROWS)
             except StorageError:
@@ -423,6 +423,25 @@ class AppRuntime:
             if self._background:
                 self._thread = threading.Thread(target=self._run, name="roomsense-processing", daemon=True)
                 self._thread.start()
+
+    def _recover_after_crash(self) -> None:
+        """Close what a previous process left open (it cannot still be running:
+        this runtime holds the data-directory lock). A validation run that was
+        never stopped is ABORTED with zero duration, so it can never count as
+        evidence; sessions without an end are closed."""
+        try:
+            runs = [r for r in self.db.list_validation_runs(limit=None) if r.status == ValidationRunStatus.RUNNING]
+            for run in runs:
+                self.db.end_validation_run(run.run_id, ended_at_unix_ns=run.started_at_unix_ns,
+                                           status=ValidationRunStatus.ABORTED)
+            open_sessions = [x for x in self.db.list_sessions(limit=1000) if x.ended_at_unix_ns is None]
+            for sess in open_sessions:
+                self.db.end_session(sess.session_id)
+            if runs or open_sessions:
+                log.warning("closed state left by an interrupted run",
+                            extra={"validation_runs_aborted": len(runs), "sessions_closed": len(open_sessions)})
+        except (StorageError, ValueError):
+            log.exception("could not recover state left by an interrupted run")
 
     def __enter__(self) -> "AppRuntime":
         self.start()
@@ -433,7 +452,8 @@ class AppRuntime:
 
     @property
     def closed(self) -> bool:
-        return self._closed
+        """True once shutdown has begun (the API then answers 503)."""
+        return self._closed or self._closing
 
     def _ensure_open(self) -> None:
         if self._closed or self._closing:
@@ -1019,6 +1039,19 @@ class AppRuntime:
             raise OperationRefused("NO_SOURCE", "start a source first", 409)
         return sid, mode
 
+    def _checked_links(self, link_ids: Sequence[str] | None) -> list[str] | None:
+        """Refuse link ids the active source does not have (the engine would
+        otherwise create an empty placeholder link for them)."""
+        if not link_ids:
+            return None
+        src = self.manager.active
+        known = set(self.engine.link_ids()) | set(src.link_ids() if src is not None else [])
+        unknown = sorted(set(link_ids) - known)
+        if unknown:
+            raise OperationRefused("UNKNOWN_LINK", f"link(s) {', '.join(unknown)} are not part of the active source",
+                                   422)
+        return list(dict.fromkeys(link_ids))
+
     def start_baseline(self, link_ids: Sequence[str] | None = None, *, confirm_room_empty: bool = False) -> dict[str, Any]:
         if confirm_room_empty is not True:
             raise OperationRefused(
@@ -1032,8 +1065,9 @@ class AppRuntime:
             state = self.manager.source_state()
             if state != SourceState.RUNNING:
                 raise OperationRefused("SOURCE_NOT_RUNNING", f"source is {state.value}; no data is flowing", 409)
+            links = self._checked_links(link_ids)
             try:
-                self.engine.start_baseline(list(link_ids) if link_ids else None)
+                self.engine.start_baseline(links)
             except ValueError as exc:
                 raise OperationRefused("CALIBRATION_REFUSED", str(exc), 409) from exc
             with self._state_lock:
@@ -1180,7 +1214,7 @@ class AppRuntime:
         with self._control_lock:
             self._ensure_open()
             sid, mode = self._require_running()
-            self.engine.start_walk_test(list(link_ids) if link_ids else None)
+            self.engine.start_walk_test(self._checked_links(link_ids))
             with self._state_lock:
                 self._walk = _WalkTest(sid, mode, self._unix_clock())
             return {"started": True, "note": WalkTestReport.model_fields["note"].default}
@@ -1439,6 +1473,7 @@ class AppRuntime:
             with self._state_lock:
                 self._room = room
                 self._room_error = None
+                self._zone_pred = None  # decided against the previous geometry
             self.predictor.set_room(room)
             self._zone_status_cache.clear()
             bindings, _ = self.registry.list_bindings()
@@ -1480,7 +1515,9 @@ class AppRuntime:
         if links is None:
             links = self.manager.link_statuses(self._clock())
         rt_hw = self._runtime_hw(links)
-        key = tuple(sorted((k, str(v)) for k, v in rt_hw.items()))
+        # The measured rate changes on every call; round it in the cache key so
+        # the (file-reading) gate is not re-evaluated at the status push rate.
+        key = tuple(sorted((k, f"{v:.1f}" if isinstance(v, float) else str(v)) for k, v in rt_hw.items()))
         hit, val = self._pose_cache.get(key, POSE_TTL_S)
         if hit:
             return val
@@ -1502,7 +1539,7 @@ class AppRuntime:
                     return {**val, "cache_age_s": round((time.monotonic_ns() - self._hw_cache.at_ns) / 1e9, 1)}
             try:
                 from . import hardware
-            except Exception as exc:  # pragma: no cover - depends on the other module being present
+            except Exception as exc:  # the inspection module is maintained separately
                 raise OperationRefused("HARDWARE_MODULE_UNAVAILABLE",
                                        f"hardware inspection module unavailable ({type(exc).__name__})", 503) from exc
             report = hardware.inspect_host()
@@ -1531,8 +1568,8 @@ class AppRuntime:
             log.exception("source describe() failed")
             return {}
 
-    def _is_simulated(self, desc: Mapping[str, Any] | None = None) -> bool:
-        if self._mode == SourceMode.SIMULATION:
+    def _is_simulated(self, desc: Mapping[str, Any] | None = None, mode: SourceMode | None = None) -> bool:
+        if (mode if mode is not None else self._mode) == SourceMode.SIMULATION:
             return True
         d = self._describe() if desc is None else desc
         return bool(d.get("simulated"))
@@ -1579,10 +1616,9 @@ class AppRuntime:
             return "No source selected."
         return "NO_BASELINE: no valid quiet baseline in this session; record one with the room empty."
 
-    def _source_detail(self, desc: Mapping[str, Any]) -> str | None:
+    def _source_detail(self, desc: Mapping[str, Any], mode: SourceMode | None,
+                       info: Mapping[str, Any]) -> str | None:
         detail = self.manager.detail
-        mode = self._mode
-        info = self._source_info
         if mode == SourceMode.LIVE:
             rx = ", ".join(f"{r['receiver_id']} on {r['port']}" for r in info.get("receivers", []))
             text = f"LIVE serial receivers: {rx}"
@@ -1595,13 +1631,13 @@ class AppRuntime:
             return detail
         return f"{text}. {detail}" if detail else text
 
-    def _notes(self, desc: Mapping[str, Any], simulated: bool) -> list[str]:
+    def _notes(self, desc: Mapping[str, Any], simulated: bool, mode: SourceMode | None,
+               info: Mapping[str, Any]) -> list[str]:
         notes: list[str] = []
-        mode = self._mode
         if simulated:
             notes.append("SIMULATED_DATA: generated by a toy model in software; not a measurement of any room.")
         if mode == SourceMode.REPLAY:
-            speed = float(self._source_info.get("speed", 1.0))
+            speed = float(info.get("speed", 1.0))
             notes.append("RECORDED_REPLAY: frames are re-played from a file, not measured now.")
             if speed != 1.0:
                 notes.append(f"REPLAY_SPEED: replaying at {speed:g}x compresses the timeline; windows, packet "
@@ -1651,10 +1687,11 @@ class AppRuntime:
         """Snapshot of everything the UI shows. Cheap enough for the WS push rate."""
         self._reload_evidence()
         now_mono = self._clock()
-        mode = self._mode
-        session = self._session_id
+        # One consistent view of the selected source, even during a switch.
+        with self._state_lock:
+            mode, session, info = self._mode, self._session_id, dict(self._source_info)
         desc = self._describe()
-        simulated = self._is_simulated(desc)
+        simulated = self._is_simulated(desc, mode)
         state = self.manager.source_state()
         links = self.manager.link_statuses(now_mono)
         activity = sorted(
@@ -1694,6 +1731,7 @@ class AppRuntime:
             pose_status=pose,
             through_wall_status=through_wall,
             evidence=self._evidence,
+            simulated=simulated,
         )
         capabilities: list[CapabilityStatus] = build_capabilities(ctx)
         rec = self.recorder.active
@@ -1703,7 +1741,7 @@ class AppRuntime:
             source_banner=SOURCE_MODE_BANNER[mode] if mode is not None else "NO SOURCE",
             simulated=simulated,
             source_state=state,
-            source_detail=self._source_detail(desc),
+            source_detail=self._source_detail(desc, mode, info),
             session_id=session,
             hardware_required=self._live_valid_frames_total == 0,
             capabilities=capabilities,
@@ -1721,7 +1759,7 @@ class AppRuntime:
             recording_id=None if rec is None else rec.recording_id,
             stale_clear_timeout_s=self.cfg.detection.clear_stale_after_s,
             unsupported_capabilities=[UnsupportedCapability(**c) for c in UNSUPPORTED_CAPABILITIES],
-            notes=self._notes(desc, simulated),
+            notes=self._notes(desc, simulated, mode, info),
         )
 
     def health(self, bind_host: str | None = None) -> dict[str, Any]:

@@ -418,6 +418,11 @@ def test_e_replay_of_recorded_simulation_is_simulated(tmp_path: Path) -> None:
                                 and QualityFlag.REPLAYED.value in f.quality_flags for f in replayed)
         assert _cap(st, CapabilityId.A_ACQUISITION) == CapabilityState.HARDWARE_REQUIRED
         assert _cap(st, CapabilityId.C_ZONE) != CapabilityState.ENABLED
+        # The capability texts must not call simulated data "recorded measurements".
+        reasons = [r for c in st.capabilities for r in c.reasons]
+        assert not any("recorded measurements" in r for r in reasons)
+        assert any("never enabled on simulated data" in r
+                   for c in st.capabilities if c.capability == CapabilityId.C_ZONE for r in c.reasons)
     finally:
         rt.shutdown()
 
@@ -541,3 +546,26 @@ def test_every_result_is_logged_once(tmp_path: Path) -> None:
         assert Counter(r.source_mode for r in rows) == Counter({SourceMode.SIMULATION: n_results})
     finally:
         rt.shutdown()
+
+
+def test_state_left_by_a_crash_is_closed_and_never_counts(tmp_path: Path) -> None:
+    """A validation run that was never stopped (the app died) becomes ABORTED."""
+    from roomsense.runtime import DB_FILENAME
+    from roomsense.storage.db import Database
+    from roomsense.storage.models import SessionRecord, ValidationRun, ValidationRunStatus
+
+    cfg = make_cfg(tmp_path)
+    data_dir = cfg.storage.resolved_data_dir()
+    data_dir.mkdir(parents=True)
+    with Database(data_dir / DB_FILENAME) as db:
+        db.add_session(SessionRecord(session_id="live_crashed", created_at_unix_ns=1_000, source_mode=SourceMode.LIVE))
+        db.add_validation_run(ValidationRun(scenario_id="S1", session_id="live_crashed", source_mode=SourceMode.LIVE,
+                                            started_at_unix_ns=2_000, placement="p", wall_description="w",
+                                            channel=6, conditions="c"))
+    with AppRuntime(cfg, background_processing=False) as rt:
+        run = rt.db.list_validation_runs()[0]
+        assert run.status == ValidationRunStatus.ABORTED and run.ended_at_unix_ns == run.started_at_unix_ns
+        assert rt.db.get_session("live_crashed").ended_at_unix_ns is not None  # type: ignore[union-attr]
+        report = rt.validation_report(force=True)
+        assert report["through_wall_status"] == "UNVERIFIED"
+        assert run.run_id in [x["run_id"] for x in report["excluded_runs"]]
