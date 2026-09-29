@@ -1,0 +1,30 @@
+# RoomSense receiver defaults. Kconfig names verified against ESP-IDF v5.5.5
+# (components/esp_wifi/Kconfig, components/esp_system/Kconfig,
+# components/freertos/Kconfig).
+#
+# NO Wi-Fi credentials belong in this file. For router mode, set the SSID and
+# password with `idf.py menuconfig` -> "Example Connection Configuration"; they
+# are then stored only in the local sdkconfig, which .gitignore excludes.
+
+# CSI support (the old name CONFIG_ESP32_WIFI_CSI_ENABLED used by esp-csi's
+# csi_recv_router is still mapped by components/esp_wifi/sdkconfig.rename).
+CONFIG_ESP_WIFI_CSI_ENABLED=y
+
+# As in esp-csi csi_recv / csi_recv_router: no A-MPDU TX. The router example
+# also disables A-MPDU RX so every frame from the AP is a separate PPDU.
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=128
+
+# Machine lines go to UART0 at 921600 baud. The baud-rate option is only
+# settable with the "Custom UART" console choice. idf.py monitor follows
+# CONFIG_ESP_CONSOLE_UART_BAUDRATE automatically (ESPTOOLPY_MONITOR_BAUD).
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_CUSTOM_NUM_0=y
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
+
+# 1 ms scheduler tick (upstream uses the same), for the ping interval and timing.
+CONFIG_FREERTOS_HZ=1000
+
+# Upstream esp-csi value.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30

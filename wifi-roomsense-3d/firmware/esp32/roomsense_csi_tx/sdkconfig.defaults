@@ -1,0 +1,10 @@
+# RoomSense transmitter defaults (Kconfig names verified against ESP-IDF v5.5.5).
+# No credentials: the transmitter never joins a network.
+
+# As in esp-csi csi_send.
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=128
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
+# 1 ms scheduler tick so the broadcast period has 1 ms resolution.
+CONFIG_FREERTOS_HZ=1000
+# esp-csi csi_send also enables CSI; the transmitter does not use CSI, so it
+# is left at the default (off) to save RAM.

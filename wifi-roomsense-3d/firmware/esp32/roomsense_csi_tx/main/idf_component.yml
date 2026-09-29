@@ -1,0 +1,3 @@
+## IDF Component Manager manifest. No managed components are used.
+dependencies:
+  idf: ">=5.4"

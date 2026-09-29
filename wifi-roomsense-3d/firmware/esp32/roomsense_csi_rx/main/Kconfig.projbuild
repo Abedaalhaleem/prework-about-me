@@ -1,0 +1,70 @@
+menu "RoomSense receiver"
+
+    choice RS_MODE
+        prompt "CSI source"
+        default RS_MODE_ESPNOW_RX
+        help
+            Where the measured CSI comes from.
+
+            ESP-NOW: a dedicated roomsense_csi_tx board broadcasts small ESP-NOW
+            frames on a fixed channel (HT20). Only frames from RS_TX_MAC are used.
+
+            Router: this board joins your own access point (credentials in
+            "Example Connection Configuration", stored only in the local sdkconfig)
+            and pings its gateway; CSI is taken only from frames sent by that AP's
+            BSSID. Router settings are never changed.
+
+        config RS_MODE_ESPNOW_RX
+            bool "ESP-NOW from a roomsense_csi_tx transmitter"
+        config RS_MODE_ROUTER_PING
+            bool "Router (your own AP) triggered by gateway pings"
+    endchoice
+
+    config RS_CHANNEL
+        int "Wi-Fi channel (ESP-NOW mode)"
+        depends on RS_MODE_ESPNOW_RX
+        range 1 13
+        default 11
+        help
+            Primary 2.4 GHz channel. The transmitter must use the same channel.
+            Both boards use 20 MHz (HT20, no secondary channel). Pick a channel
+            that is legal where you are.
+
+    config RS_TX_MAC
+        string "Transmitter MAC address (ESP-NOW mode)"
+        depends on RS_MODE_ESPNOW_RX
+        default "1a:00:00:00:00:00"
+        help
+            Station MAC that roomsense_csi_tx sets on itself (same default as
+            esp-csi's csi_send). CSI from every other device is discarded in the
+            Wi-Fi callback before anything is copied.
+
+    config RS_RATE_HZ
+        int "Packet rate in Hz (router: ping rate; ESP-NOW: expected transmitter rate)"
+        range 1 100
+        default 25
+        help
+            Router mode: gateway pings per second (interval = 1000/RS_RATE_HZ ms,
+            integer). ESP-NOW mode: only reported in RSHELLO so the host knows the
+            expected rate; the transmitter's own RS_RATE_HZ sets the real rate.
+
+    config RS_QUEUE_DEPTH
+        int "CSI records buffered between the Wi-Fi callback and the serial printer"
+        range 4 64
+        default 32
+        help
+            Each record is about 730 bytes of RAM. When the queue is full new
+            records are dropped (counted in RSSTAT dropped_queue_full); the
+            Wi-Fi task never waits.
+
+    config RS_HELLO_INTERVAL_MS
+        int "RSHELLO interval (ms)"
+        range 1000 60000
+        default 5000
+
+    config RS_STAT_INTERVAL_MS
+        int "RSSTAT interval (ms)"
+        range 200 60000
+        default 1000
+
+endmenu

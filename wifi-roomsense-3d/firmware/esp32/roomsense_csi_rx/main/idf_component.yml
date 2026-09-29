@@ -1,0 +1,6 @@
+## IDF Component Manager manifest.
+## No managed components: in particular esp_csi_gain_ctrl (used by the upstream
+## esp-csi examples) is deliberately not used, because RoomSense exports the raw
+## int8 CSI values without gain compensation.
+dependencies:
+  idf: ">=5.4"

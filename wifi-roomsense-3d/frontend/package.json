@@ -8,9 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --pretty",
+    "build": "tsc -b tsconfig.json tsconfig.node.json && vite build",
+    "typecheck": "tsc -b tsconfig.json tsconfig.node.json --pretty",
     "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

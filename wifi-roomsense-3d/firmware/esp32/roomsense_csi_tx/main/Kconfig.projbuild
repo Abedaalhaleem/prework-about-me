@@ -1,0 +1,38 @@
+menu "RoomSense transmitter"
+
+    config RS_CHANNEL
+        int "Wi-Fi channel"
+        range 1 13
+        default 11
+        help
+            Primary 2.4 GHz channel (20 MHz, no secondary channel). Must match the
+            receiver's RS_CHANNEL. Pick a channel that is legal where you are.
+
+    config RS_TX_MAC
+        string "Transmitter station MAC address"
+        default "1a:00:00:00:00:00"
+        help
+            Set on this board with esp_wifi_set_mac() (same default as esp-csi's
+            csi_send). Must be unicast and locally administered (second-lowest
+            bit of the first octet set, e.g. 1a:.., 02:..) so it can never clash
+            with a vendor-assigned address. Receivers filter on this address.
+
+    config RS_RATE_HZ
+        int "Broadcast rate (Hz)"
+        range 1 100
+        default 25
+        help
+            ESP-NOW frames per second. The schedule alternates whole-tick
+            periods so the long-run rate is exact (e.g. 30 Hz = 33/33/34 ms).
+
+    config RS_TX_ID
+        int "Transmitter id carried in the payload (0-255)"
+        range 0 255
+        default 1
+
+    config RS_TX_LOG_INTERVAL_MS
+        int "Interval of the ok/fail summary log (ms)"
+        range 1000 600000
+        default 10000
+
+endmenu
