@@ -352,3 +352,26 @@ Every `/api/*` request must then send `Authorization: Bearer <token>`.
   * `UNSUPPORTED_CAPABILITIES` is exposed as `SystemStatus.unsupported_capabilities`
     and as `GET /api/capabilities/unsupported`.
 * **Model research:** `docs/MODEL_COMPATIBILITY.md`.
+
+### Frontend expectations the API must honour
+
+* **WebSocket auth in LAN mode.** Browsers cannot set an `Authorization` header on a
+  WebSocket, so the UI sends `Sec-WebSocket-Protocol: roomsense.v1, bearer.<token>`.
+  When a token is configured, the server takes the token from that header, compares it
+  in constant time, and accepts with `subprotocol="roomsense.v1"`. Tokens are never put
+  in query strings, because those end up in access logs. On loopback without a token,
+  no subprotocol is required.
+* **`POST /api/validation/runs`.** Body: `{scenario_id, placement, wall_description,
+  channel: int|null, conditions, notes}`. Returns a `ValidationRun` with its `run_id`.
+  `POST /api/validation/runs/{run_id}/stop` returns the updated `ValidationRun`.
+* **`POST /api/recordings/start`.** The body carries consent as
+  `{all_participants_consented: true, participant_count, purpose, statement_version:
+  "consent-v1"}`, without `statement_text`. The server fills the text in from its own
+  statement table. The UI shows the server's text via
+  `GET /api/recordings/consent-statement`, which returns `{version, text}`.
+* **`GET /api/hardware`.** Returns top-level keys `detected` and `recommended`, plus any
+  further detail.
+* **`GET /api/zone/status`.** The report names the confusion matrix `confusion_matrix`
+  (rows = true class, columns = predicted class) with a sibling `labels` list, and
+  includes `abstention_rate`.
+* **`POST /api/calibration/walk-test/stop`.** Returns `WalkTestReport`.

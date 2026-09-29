@@ -64,8 +64,9 @@ export function SignalPanel({
   const rssiT = toRelativeSeconds(snap.rssi_dbm?.t ?? [], now);
   const amp = amplitudeSeries(snap.amplitude, 10);
   const profileK = snap.latest_profile?.k ?? [];
-  const profileAge = snap.latest_profile?.t != null ? (now - snap.latest_profile.t) / 1000 : null;
-  const snapshotAge = (clientNowMs - entry.receivedAtMs) / 1000;
+  const profileAge = snap.latest_profile?.t != null ? Math.max(0, (now - snap.latest_profile.t) / 1000) : null;
+  // useNow() ticks every 500 ms, so a just-arrived snapshot can look "newer than now"; clamp.
+  const snapshotAge = Math.max(0, (clientNowMs - entry.receivedAtMs) / 1000);
 
   return (
     <div className="plots">

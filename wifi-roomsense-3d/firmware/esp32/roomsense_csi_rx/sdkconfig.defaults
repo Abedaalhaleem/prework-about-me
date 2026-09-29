@@ -6,8 +6,9 @@
 # password with `idf.py menuconfig` -> "Example Connection Configuration"; they
 # are then stored only in the local sdkconfig, which .gitignore excludes.
 
-# CSI support (the old name CONFIG_ESP32_WIFI_CSI_ENABLED used by esp-csi's
-# csi_recv_router is still mapped by components/esp_wifi/sdkconfig.rename).
+# CSI support. esp-csi's csi_recv_router still uses the pre-5.0 name
+# (ESP32_WIFI_CSI_ENABLED with the CONFIG_ prefix), which v5.5.5 maps to this
+# one through components/esp_wifi/sdkconfig.rename; the current name is used here.
 CONFIG_ESP_WIFI_CSI_ENABLED=y
 
 # As in esp-csi csi_recv / csi_recv_router: no A-MPDU TX. The router example

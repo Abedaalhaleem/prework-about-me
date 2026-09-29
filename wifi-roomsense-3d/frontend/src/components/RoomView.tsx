@@ -83,10 +83,11 @@ export function RoomView({
   // Per-link visuals: state from the backend, downgraded to STALE/NO_DATA client-side.
   const visuals: LinkVisual[] = useMemo(() => {
     if (!room) return [];
-    const ages = status && live.statusReceivedAtMs !== null ? linkAges(status, live.statusReceivedAtMs, now) : new Map();
+    const ages: Map<string, number | null> =
+      status && live.statusReceivedAtMs !== null ? linkAges(status, live.statusReceivedAtMs, now) : new Map();
     return room.links.map((def) => {
       const act = status?.activity.find((a) => a.link_id === def.link_id);
-      const age = (ages.get(def.link_id) as number | null | undefined) ?? null;
+      const age = ages.get(def.link_id) ?? null;
       const state = linkDisplayState(act, age, status?.stale_clear_timeout_s ?? 0, connected);
       const st = linkStyle(state);
       return { linkId: def.link_id, state, label: age !== null ? `${st.short} · ${formatAge(age)}` : st.short };

@@ -120,3 +120,17 @@ the configured transmitter MAC **and** the magic matches. Otherwise `tx_seq` is
 | 5 | 1 | tx_id (0–255) |
 | 6 | 4 | seq (u32) |
 | 10 | 2 | configured rate_hz (u16) |
+
+## v1 clarifications (from the firmware implementation)
+
+* The device ends lines with `\r\n` by default (ESP-IDF
+  `CONFIG_LIBC_STDOUT_LINE_ENDING_CRLF`). The host tolerates this.
+* RSHELLO field 15 `baud` is `NA` when the console is USB-Serial-JTAG or USB CDC.
+* RSSTAT `printed` counts only RSCSI lines that were written in full.
+* On ESP32-C5/C6/C61, records with `rx_ctrl.rx_channel_estimate_info_vld == 0` are
+  dropped after `rec_seq` has advanced. They are **not** included in `drops`, and v1 has
+  no RSSTAT field for them. The firmware reports them only as an `ESP_LOGW` diagnostic
+  line. On those chips, therefore, `rec_seq` gaps minus `drops` is not purely serial
+  loss. A future v2 should add a `dropped_invalid_csi` counter.
+* `esp_wifi_rxctrl_t` (C5/C6/C61) does contain `rx_state` in ESP-IDF v5.5.5. v1 defines
+  field 24 as classic-only, so the firmware sends `NA`.

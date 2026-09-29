@@ -71,6 +71,21 @@ const PAD = { left: 56, right: 14, top: 10, bottom: 38 };
 const BAND_H = 8;
 
 function draw(canvas: HTMLCanvasElement, width: number, props: SignalPlotProps): { segments: number; points: number } {
+  // Segments are computed first so the sample summary is correct even when
+  // no 2-D context is available (it never depends on drawing).
+  const [x0, x1] = props.xDomain;
+  const inDomain = (s: Segment): Segment => s.filter((p) => p.x >= x0 && p.x <= x1);
+  const all: { line: PlotLine; segs: Segment[] }[] = props.lines.map((line) => ({
+    line,
+    segs: splitSeries(line.x, line.y, { gaps: props.gaps, maxStep: props.maxStep })
+      .map(inDomain)
+      .filter((s) => s.length > 0),
+  }));
+  const counts = {
+    segments: all.reduce((n, l) => n + l.segs.length, 0),
+    points: all.reduce((n, l) => n + l.segs.reduce((m, s) => m + s.length, 0), 0),
+  };
+
   const height = props.height ?? 170;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.floor(width * dpr);
@@ -78,7 +93,7 @@ function draw(canvas: HTMLCanvasElement, width: number, props: SignalPlotProps):
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return { segments: 0, points: 0 };
+  if (!ctx) return counts;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = THEME.bg;
   ctx.fillRect(0, 0, width, height);
@@ -88,18 +103,7 @@ function draw(canvas: HTMLCanvasElement, width: number, props: SignalPlotProps):
   const plotR = width - PAD.right;
   const plotT = PAD.top;
   const plotB = height - PAD.bottom - bandSpace;
-  if (plotR - plotL < 20 || plotB - plotT < 20) return { segments: 0, points: 0 };
-
-  const [x0, x1] = props.xDomain;
-  const inDomain = (s: Segment): Segment => s.filter((p) => p.x >= x0 && p.x <= x1);
-  const all: { line: PlotLine; segs: Segment[] }[] = props.lines.map((line) => ({
-    line,
-    segs: splitSeries(line.x, line.y, { gaps: props.gaps, maxStep: props.maxStep })
-      .map(inDomain)
-      .filter((s) => s.length > 0),
-  }));
-  const segCount = all.reduce((n, l) => n + l.segs.length, 0);
-  const pointCount = all.reduce((n, l) => n + l.segs.reduce((m, s) => m + s.length, 0), 0);
+  if (plotR - plotL < 20 || plotB - plotT < 20) return counts;
 
   const ext = props.yDomain ?? (() => {
     const e = extentOf(all.flatMap((l) => l.segs), (props.hLines ?? []).map((h) => h.y));
@@ -234,7 +238,7 @@ function draw(canvas: HTMLCanvasElement, width: number, props: SignalPlotProps):
       ctx.fillRect(bx0, by, Math.max(2, bx1 - bx0), BAND_H);
     }
   }
-  return { segments: segCount, points: pointCount };
+  return counts;
 }
 
 export function SignalPlot(props: SignalPlotProps) {
