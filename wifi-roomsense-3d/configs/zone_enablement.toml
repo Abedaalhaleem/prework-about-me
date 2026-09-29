@@ -1,0 +1,57 @@
+# Zone estimation (capability C): enablement criteria.
+#
+# These criteria were written BEFORE any zone data or model existed. They must
+# not be lowered after seeing results just to unlock the feature. The SHA-256
+# of this file's content is the `criteria_version`. It is recorded in every
+# training report and bound to every model. If the file changes, every model
+# trained under the old version goes back to DISABLED (reason CRITERIA_CHANGED)
+# and has to be re-evaluated on new held-out sessions.
+#
+# Operating scope: ONE moving participant. This is not people counting, and it
+# is not continuous tracking of stationary people.
+
+[scope]
+max_participants = 1
+description = "Single moving participant; abstain otherwise."
+
+[data]
+# Class labels. Zone ids come from the room geometry (USER PROVIDED). These two
+# non-zone classes are required so that the model learns to say "no target zone".
+required_non_zone_classes = ["EMPTY", "OUTSIDE_TARGET_ROOM"]
+min_zones = 2
+# Sessions are whole recordings. Splits are made BY SESSION, never by window.
+min_sessions_per_class_train = 3
+min_sessions_per_class_validation = 1
+min_sessions_per_class_test = 1
+# Test sessions must start after every training and validation session
+# ("performance on later sessions").
+require_test_after_train_and_validation = true
+min_test_windows_per_class = 30
+# Seconds trimmed from the start and end of each labelled session (walking into position etc.).
+trim_session_edges_s = 5.0
+# Any synthetic session (source SIMULATION, or a replay of synthetic data) makes a model
+# ineligible, whatever its scores.
+allow_synthetic_sessions = false
+# The model needs this many receivers, and they must be the same links at runtime.
+min_receivers = 3
+
+[thresholds]
+# Measured on the untouched TEST sessions only. The abstention threshold is
+# tuned on VALIDATION sessions and then frozen.
+min_test_balanced_accuracy_non_abstained = 0.80
+min_test_accuracy_wilson_lower_95 = 0.70
+max_test_abstention_rate = 0.30
+# EMPTY windows predicted as any target zone:
+max_empty_predicted_as_zone_rate = 0.05
+# OUTSIDE_TARGET_ROOM windows predicted as any target zone:
+max_outside_predicted_as_zone_rate = 0.10
+# Every target zone must reach this recall on the test set (non-abstained windows):
+min_per_zone_recall = 0.60
+
+[validation_tuning]
+# Abstention: estimate only when the top model score is at least t. t is picked
+# on VALIDATION sessions from this grid. It is the smallest t whose validation
+# abstention rate stays at or below max_validation_abstention_rate and that
+# maximises balanced accuracy.
+threshold_grid = [0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+max_validation_abstention_rate = 0.30
