@@ -199,7 +199,7 @@ def resolve_layout(
         else:
             return None
         return CsiLayout(
-            layout_id=f"c5.{ltf_config}.total{total_values}.{seg}{len(order)}",
+            layout_id=f"c5.{ltf_config}.total{total_values}.{seg}{len(order)}" + ("" if documented else ".assumed"),
             family="c5",
             total_values=total_values,
             segment_name=seg,
@@ -212,6 +212,44 @@ def resolve_layout(
             if total_values == 234
             else "ESP32-C5 table.",
         )
+    return None
+
+
+def layout_from_id(layout_id: str | None) -> CsiLayout | None:
+    """Rebuild a layout from its ``layout_id`` (as stored on recorded frames).
+
+    Returns ``None`` for unknown or malformed ids. The id encodes every input
+    of :func:`resolve_layout`, so this is a pure inverse.
+    """
+    if not layout_id:
+        return None
+    parts = layout_id.split(".")
+    try:
+        if parts[0] == "classic" and len(parts) == 5:
+            ltf = parts[1]
+            sec = {"sec_none": 0, "sec_above": 1, "sec_below": 2}[parts[2]]
+            total = int(parts[3].removeprefix("total"))
+            if ltf not in ("lltf_only", "lltf_htltf_stbc") or parts[4] != "LLTF64":
+                return None
+            if ltf == "lltf_only" and total != 128:
+                return None
+            if ltf == "lltf_htltf_stbc" and total not in {v for (s, *_), v in _CLASSIC_TOTALS_ALL_LTF.items() if s == sec}:
+                return None
+            return _classic_lltf_layout(sec, total, ltf)
+        if parts[0] == "c5" and len(parts) in (4, 5):
+            documented = not (len(parts) == 5 and parts[4] == "assumed")
+            if len(parts) == 5 and documented:
+                return None
+            total = int(parts[2].removeprefix("total"))
+            lay = resolve_layout(
+                family="c5", total_values=total, ltf_config=parts[1], secondary_channel=None,
+                sig_mode=None, cwb=None, stbc=None, documented=documented,
+            )
+            if lay is None:
+                return None
+            return lay if lay.layout_id == layout_id else None
+    except (KeyError, ValueError):
+        return None
     return None
 
 
