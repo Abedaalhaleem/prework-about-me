@@ -28,3 +28,6 @@ firmware/esp32/host_tests/build/
 
 .DS_Store
 HARDWARE_REPORT.local.md
+
+# Local reports generated on your own machine
+*.local.md
