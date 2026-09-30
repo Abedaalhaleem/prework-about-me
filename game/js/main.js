@@ -149,11 +149,11 @@ class Game {
     });
     document.addEventListener('keyup', (e) => { this.keys.delete(e.code); });
     document.addEventListener('mousemove', (e) => {
-      if (this.locked || this.testMode) { this.mdx += e.movementX || 0; this.mdy += e.movementY || 0; }
+      if (this.locked || this.testMode || (this.noLock && this.state === 'playing')) { this.mdx += e.movementX || 0; this.mdy += e.movementY || 0; }
     });
     document.addEventListener('mousedown', (e) => {
       if (this.state !== 'playing') return;
-      if (!this.locked && !this.testMode) { this._lock(); return; }
+      if (!this.locked && !this.testMode && !this.noLock) { this._lock(); return; }
       if (e.button === 0) this.mouse.fire = true;
       if (e.button === 2) this.mouse.ads = true;
     });
@@ -165,8 +165,10 @@ class Game {
     document.addEventListener('wheel', (e) => { if (this.state === 'playing') this.wheel += Math.sign(e.deltaY); }, { passive: true });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
+      if (this.locked) { this.everLocked = true; this.noLock = false; }
       if (!this.locked && this.state === 'playing' && !this.testMode) this.pause();
     });
+    document.addEventListener('pointerlockerror', () => this._lockFailed());
     window.addEventListener('blur', () => { this.keys.clear(); this.mouse.fire = false; this.mouse.ads = false; });
   }
 
@@ -175,8 +177,8 @@ class Game {
     const plain = () => {
       try {
         const p2 = c.requestPointerLock();
-        if (p2 && p2.catch) p2.catch(() => { /* user can click the canvas to retry */ });
-      } catch { /* ignore */ }
+        if (p2 && p2.catch) p2.catch(() => this._lockFailed());
+      } catch { this._lockFailed(); }
     };
     try {
       const p = c.requestPointerLock({ unadjustedMovement: true });
@@ -184,6 +186,13 @@ class Game {
     } catch {
       plain();
     }
+  }
+
+  // Some embedded frames refuse pointer lock: fall back to aiming with plain mouse movement
+  _lockFailed() {
+    if (this.everLocked || this.noLock || this.state !== 'playing') return;
+    this.noLock = true;
+    this.hud.message('MOUSE LOCK UNAVAILABLE', 'MOVE THE MOUSE TO AIM · OPEN IN A FULL BROWSER TAB FOR BEST CONTROL', true, 5);
   }
 
   _readInput() {
