@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neontown 2071</title>
+  <meta name="description" content="A futuristic first-person arena shooter set in a neon suburb, running entirely in the browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/game.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- ================= HUD ================= -->
+  <div id="hud" class="hidden">
+    <div id="minimap-wrap">
+      <canvas id="minimap" width="220" height="220"></canvas>
+      <div id="mm-uav" class="hidden">UAV ONLINE</div>
+    </div>
+
+    <div id="scorebar">
+      <div class="team ally">
+        <span class="tname">VANGUARD</span>
+        <span class="tscore" id="score-ally">0</span>
+        <div class="bar"><i id="bar-ally"></i></div>
+      </div>
+      <div id="timer-wrap"><div id="timer">08:00</div><div id="mode">TEAM DEATHMATCH</div></div>
+      <div class="team enemy">
+        <span class="tscore" id="score-enemy">0</span>
+        <span class="tname">SYNDICATE</span>
+        <div class="bar"><i id="bar-enemy"></i></div>
+      </div>
+    </div>
+
+    <div id="killfeed"></div>
+
+    <div id="crosshair"><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="target-name"></div>
+    <div id="popups"></div>
+    <div id="medals"></div>
+    <div id="center-msg"></div>
+    <div id="dmg-indicators"></div>
+    <div id="grenade-indicator" class="hidden"><div class="gi-icon">✹</div><div class="gi-arrow">▲</div></div>
+    <div id="interact"></div>
+
+    <div id="bottom-left">
+      <div id="streaks">
+        <div class="streak" id="streak-uav"><span class="key">4</span><span class="sname">UAV</span><span class="cost">3</span></div>
+        <div class="streak" id="streak-orbital"><span class="key">5</span><span class="sname">ORBITAL STRIKE</span><span class="cost">5</span></div>
+      </div>
+      <div id="player-score"><span id="ps-score">0</span><small>SCORE</small><span id="ps-streak">0</span><small>STREAK</small></div>
+      <div id="thrust"><small>THRUST</small><div class="tbar"><i id="thrust-fill"></i></div></div>
+      <div id="health"><small>ARMOR</small><div class="tbar"><i id="health-fill"></i></div></div>
+    </div>
+
+    <div id="bottom-right">
+      <div id="weapon-name">ARC-7</div>
+      <div id="weapon-type">ASSAULT RIFLE</div>
+      <div id="ammo"><span id="ammo-mag">30</span><span id="ammo-res">180</span></div>
+      <div id="equipment"><span id="nade-count">2</span> FRAG <span class="key">G</span></div>
+      <div id="weapon-slots"><span data-slot="0">1</span><span data-slot="1">2</span><span data-slot="2">3</span></div>
+    </div>
+    <div id="reload-hint" class="hidden">PRESS <b>R</b> TO RELOAD</div>
+
+    <div id="scope-overlay" class="hidden"><div class="scope-lens"></div></div>
+    <div id="health-vignette"></div>
+    <div id="burn-overlay"></div>
+
+    <div id="scoreboard" class="hidden">
+      <div class="sb-head">TEAM DEATHMATCH <span id="sb-limit"></span></div>
+      <div class="sb-cols">
+        <table class="sb ally"><thead><tr><th>VANGUARD</th><th>SCORE</th><th>K</th><th>D</th></tr></thead><tbody id="sb-ally"></tbody></table>
+        <table class="sb enemy"><thead><tr><th>SYNDICATE</th><th>SCORE</th><th>K</th><th>D</th></tr></thead><tbody id="sb-enemy"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash-overlay"></div>
+
+  <div id="death-screen" class="hidden">
+    <div class="ds-title">KILLED BY</div>
+    <div class="ds-killer" id="ds-killer">—</div>
+    <div class="ds-weapon" id="ds-weapon"></div>
+    <div class="ds-respawn">RESPAWNING IN <b id="ds-timer">3</b></div>
+  </div>
+
+  <!-- ================= MENUS ================= -->
+  <div id="menu" class="screen">
+    <div class="menu-panel">
+      <div class="logo">
+        <div class="logo-top">NEONTOWN</div>
+        <div class="logo-num">2071</div>
+        <div class="logo-sub">TEAM DEATHMATCH · 5 v 5</div>
+      </div>
+      <button id="btn-play" class="btn primary">DEPLOY</button>
+      <button id="btn-settings" class="btn">SETTINGS</button>
+      <button id="btn-controls" class="btn">CONTROLS</button>
+      <div id="menu-note">Keyboard &amp; mouse required · Click DEPLOY to lock the mouse</div>
+    </div>
+
+    <div id="settings-panel" class="side-panel hidden">
+      <h3>SETTINGS</h3>
+      <label>Mouse sensitivity <input type="range" id="set-sens" min="0.2" max="3" step="0.05"><span id="val-sens"></span></label>
+      <label>Field of view <input type="range" id="set-fov" min="65" max="110" step="1"><span id="val-fov"></span></label>
+      <label>Master volume <input type="range" id="set-vol" min="0" max="1" step="0.05"><span id="val-vol"></span></label>
+      <label>Bot difficulty
+        <select id="set-diff"><option value="recruit">Recruit</option><option value="regular">Regular</option><option value="veteran">Veteran</option></select>
+      </label>
+      <label>Graphics
+        <select id="set-quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+      </label>
+      <label class="check"><input type="checkbox" id="set-voice"> Announcer voice</label>
+      <label class="check"><input type="checkbox" id="set-invert"> Invert mouse Y</label>
+      <p class="hint">Graphics changes apply after reloading the page.</p>
+    </div>
+
+    <div id="controls-panel" class="side-panel hidden">
+      <h3>CONTROLS</h3>
+      <table class="controls">
+        <tr><td>W A S D</td><td>Move</td></tr>
+        <tr><td>Mouse</td><td>Aim · Left click fire · Right click aim down sights</td></tr>
+        <tr><td>Shift</td><td>Sprint</td></tr>
+        <tr><td>Space</td><td>Jump · again in the air to thrust-jump · on walls to wall-jump</td></tr>
+        <tr><td>Sprint + jump at a wall</td><td>Wall-run</td></tr>
+        <tr><td>C</td><td>Crouch · while sprinting: power slide</td></tr>
+        <tr><td>R</td><td>Reload</td></tr>
+        <tr><td>1 / 2 / 3 · Wheel</td><td>Switch weapon</td></tr>
+        <tr><td>G</td><td>Frag grenade</td></tr>
+        <tr><td>F / V</td><td>Melee</td></tr>
+        <tr><td>4 / 5</td><td>UAV / Orbital Strike scorestreaks</td></tr>
+        <tr><td>Tab</td><td>Scoreboard</td></tr>
+        <tr><td>Esc</td><td>Pause</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="menu-panel small">
+      <div class="logo-top small">PAUSED</div>
+      <button id="btn-resume" class="btn primary">RESUME</button>
+      <button id="btn-quit" class="btn">QUIT TO MENU</button>
+      <div class="pause-hint">Resuming re-locks the mouse. If it doesn't, click anywhere in the game.</div>
+    </div>
+  </div>
+
+  <div id="endscreen" class="screen hidden">
+    <div class="end-panel">
+      <div id="end-result">VICTORY</div>
+      <div id="end-score"></div>
+      <div id="end-stats"></div>
+      <button id="btn-again" class="btn primary">PLAY AGAIN</button>
+      <button id="btn-menu" class="btn">MAIN MENU</button>
+    </div>
+  </div>
+
+  <div id="loading"><div class="ld-title">NEONTOWN 2071</div><div class="ld-sub" id="ld-sub">Generating the town…</div><div class="ld-bar"><i></i></div></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
