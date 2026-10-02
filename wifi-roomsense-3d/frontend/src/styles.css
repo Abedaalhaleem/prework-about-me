@@ -1778,3 +1778,29 @@ legend {
   padding: 3px 8px;
   pointer-events: none;
 }
+
+/* Simulated Wi-Fi waves view. */
+.wave-view__stage {
+  height: clamp(340px, 60vh, 760px);
+}
+.wave-legend {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  font-size: 11px;
+  color: var(--text-2);
+  background: rgba(11, 15, 20, 0.78);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.wave-legend__bar {
+  width: 110px;
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgb(100, 230, 255), rgb(10, 40, 110));
+}

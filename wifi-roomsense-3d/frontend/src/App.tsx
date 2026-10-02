@@ -15,6 +15,7 @@ import { HardwarePage } from './pages/HardwarePage';
 import { RecordingsPage } from './pages/RecordingsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ValidationPage } from './pages/ValidationPage';
+import { WavesPage } from './pages/WavesPage';
 import { WifiSignalPage } from './pages/WifiSignalPage';
 
 const TABS = [
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'capabilities', label: 'Capabilities & Research' },
   { id: 'hardware', label: 'Hardware' },
   { id: 'mywifi', label: 'My Wi-Fi signal' },
+  { id: 'waves', label: 'Wi-Fi waves (simulated)' },
   { id: 'settings', label: 'Settings' },
 ] as const;
 
@@ -75,6 +77,7 @@ export function App() {
       <main id="main" className="main">
         {tab === 'dashboard' && <DashboardPage live={live} now={now} />}
         {tab === 'mywifi' && <WifiSignalPage />}
+        {tab === 'waves' && <WavesPage />}
         {tab === 'calibration' && <CalibrationPage live={live} />}
         {tab === 'recordings' && <RecordingsPage live={live} />}
         {tab === 'validation' && <ValidationPage live={live} />}

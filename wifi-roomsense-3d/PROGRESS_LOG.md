@@ -117,3 +117,15 @@ Wi-Fi hardware).
   * token-charset wording and one config comment were wrong;
   * the protocol text promised a baseline "for the whole series", but baselines are per session.
 * Comments in both criteria files were corrected **before any validation or zone data existed**, and **no threshold changed**. The zone criteria comment now says `criteria_version` is the first 16 hex digits of the SHA-256. The through-wall comment now says the status uses the most recent *eligible* LIVE run. Because criteria versions hash the whole file, the through-wall `criteria_version` changed from `e76147a9ab732095` to `059548fab1041092`.
+
+### 2026-10-02: My Wi-Fi signal and simulated Wi-Fi waves
+
+* **My Wi-Fi signal page.** It shows this computer's own RSSI (CoreWLAN or `system_profiler` on macOS, `/proc/net/wireless` on Linux, `netsh` on Windows) as a flat chart and a 3-D ribbon chart.
+  * Samples are memory-only. The network name is never read into them.
+  * It never feeds the detector or the 3-D room.
+  * It is tested with captured-format text only. It has not been run on a real Mac by us.
+* **Wi-Fi waves (simulated) page.** It shows a 3-D wireframe of the room layout, a blue predicted-coverage glow and animated rings from the chosen source.
+  * The model is a textbook multi-wall path-loss model: free-space distance loss plus an assumed loss per wall crossed, chosen by material text. It is labelled SIMULATED everywhere.
+  * It cannot show people or objects.
+  * Optionally, it compares the prediction at a user-marked spot with the computer's real RSSI.
+  * Verified by unit tests of the model and by the page smoke test. A headless-Chromium screenshot (SwiftShader) rendered it without console errors.

@@ -90,6 +90,27 @@ its samples, and keeps samples in memory only.
 The macOS reader has **not yet been run on a real Mac**. It was tested only
 with captured-format text and a test reader.
 
+### Wi-Fi waves (simulated)
+
+The **Wi-Fi waves (simulated)** page draws the room layout as a glowing 3-D
+wireframe. A blue glow spreads from the chosen Wi-Fi source, and animated
+rings dim as they pass through each wall. The page is a **model, not a
+measurement**: it uses a textbook multi-wall path-loss model.
+
+* **Distance loss** is free-space loss at 1 m plus 20·log10(distance).
+* **Wall loss** is an assumed value for each wall crossed, taken from the material you typed. For example drywall is 3 dB, brick 9 dB, concrete 12 dB and metal 20 dB. An open doorway counts as about 1 dB.
+
+The model ignores reflections and furniture. It **cannot show people,
+objects or anything behind a wall**, and no ordinary router or laptop can.
+The page carries a large SIMULATED banner and watermark. It stays separate
+from the dashboard and from the measured 3-D room.
+
+**Using it with your own home:**
+
+1. Enter your walls, materials and a ROUTER node on the Calibration page. Until then it shows the EXAMPLE room, labelled as such.
+2. Optionally, mark where your computer is.
+3. The page then shows the model's prediction for that spot beside your computer's real measured RSSI, the only measured number on the page. Differences of 10–20 dB are normal.
+
 ### Without hardware
 
 * **Simulation**: Dashboard → Source → Simulation. You must tick *"I understand

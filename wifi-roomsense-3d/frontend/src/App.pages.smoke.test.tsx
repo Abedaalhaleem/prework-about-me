@@ -138,6 +138,7 @@ describe('Dashboard with data (jsdom)', () => {
       'Capabilities & Research',
       'Hardware',
       'My Wi-Fi signal',
+      'Wi-Fi waves (simulated)',
       'Settings',
     ]);
     for (const tab of tabs) {
@@ -163,6 +164,12 @@ describe('Dashboard with data (jsdom)', () => {
     // The signal-strength page states what it is not, and shows the request failure instead of numbers.
     expect(text()).toContain('not the detailed CSI data');
     expect(text()).toContain('never drawn in the 3-D room');
+    await act(async () => tabs[7]?.click());
+    // The simulated wave page is loudly labelled and says what it cannot show.
+    expect(text()).toContain('SIMULATED WAVES');
+    expect(text()).toContain('cannot show people');
+    expect(text()).toContain('Using the EXAMPLE room');
+    expect(text()).toContain('w1');
     await act(async () => tabs[1]?.click());
     expect(text()).toContain('EXAMPLE GEOMETRY (sample data — not your room)');
   });
