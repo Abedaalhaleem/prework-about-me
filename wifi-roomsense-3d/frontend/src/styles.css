@@ -1759,3 +1759,22 @@ legend {
     transition: none !important;
   }
 }
+
+/* ------------------------------------------------------- 3-D signal ribbon */
+
+.ribbon-view__stage {
+  height: clamp(300px, 46vh, 520px);
+}
+.ribbon-view__caption {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  max-width: calc(100% - 20px);
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(11, 15, 20, 0.78);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  pointer-events: none;
+}

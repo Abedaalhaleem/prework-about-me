@@ -72,7 +72,8 @@ scripts/stop.sh     # graceful shutdown (closes serial ports, finalises recordin
 ### My Wi-Fi signal (this computer, no extra hardware)
 
 The **My Wi-Fi signal** page plots the signal strength (RSSI, in dBm) and
-noise of the computer's own Wi-Fi connection, about twice a second. On macOS
+noise of the computer's own Wi-Fi connection, about twice a second, as a flat
+chart and as a rotatable **3-D ribbon chart** (x = time, height = strength). On macOS
 it uses Apple's CoreWLAN framework and falls back to `system_profiler` if
 CoreWLAN gives no reading. Linux uses `/proc/net/wireless`, and Windows uses
 `netsh`, which reports a percentage instead.

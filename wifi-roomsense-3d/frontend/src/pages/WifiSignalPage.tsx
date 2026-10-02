@@ -4,12 +4,15 @@
  * in the 3-D room.
  */
 
+import { useMemo } from 'react';
 import { api } from '../api/client';
 import { SignalPlot } from '../components/SignalPlot';
+import { SignalRibbonView } from '../components/SignalRibbonView';
 import { Card, ErrorNotice, KeyValue, Notice, Unavailable } from '../components/ui';
 import { useAction, useApi } from '../hooks/useApi';
 import { type HostWifiSnapshot, hostWifiStatus, signalUnit } from '../lib/hostWifi';
 import { autoMaxStep, toRelativeSeconds } from '../lib/plotting';
+import { ribbonSegments } from '../lib/ribbon';
 
 const WINDOW_S = 120;
 
@@ -21,6 +24,16 @@ export function WifiSignalPage() {
   const now = snap?.server_time_unix_ms ?? Date.now();
   const t = toRelativeSeconds(snap?.series.t ?? [], now);
   const unit = snap ? signalUnit(snap) : 'none';
+  // Readings further apart than a few sample intervals are a gap in the ribbon.
+  const maxGapS = Math.max(2, 3 * (snap?.interval_s ?? 1));
+  const ribbon = useMemo(
+    () => ({
+      rssi: ribbonSegments(t, snap?.series.rssi_dbm ?? [], WINDOW_S, maxGapS),
+      noise: ribbonSegments(t, snap?.series.noise_dbm ?? [], WINDOW_S, maxGapS),
+    }),
+    // t is derived from snap; recompute when a new snapshot arrives.
+    [snap, maxGapS],
+  );
 
   return (
     <div className="page">
@@ -63,6 +76,20 @@ export function WifiSignalPage() {
               ['Failed reads', snap.errors > 0 ? `${snap.errors} (last: ${snap.last_error ?? 'unknown'})` : '0'],
             ]}
           />
+        )}
+        {snap && unit !== 'percent' && (
+          <>
+            <Notice kind="info">
+              <strong>Try this:</strong> keep the laptop still for 30 s and the ribbon stays fairly flat. Then walk between the
+              laptop and your router a few times, cover the laptop&apos;s screen edge with both hands, or carry it toward and
+              away from the router, and watch the ribbon dip and rise. Your body absorbs some Wi-Fi signal: that is the
+              same effect motion sensing uses, but this single number is far too coarse to locate anyone or to see
+              through walls.
+            </Notice>
+            <h3 className="h3 mt">3-D view</h3>
+            <SignalRibbonView rssi={ribbon.rssi} noise={ribbon.noise} />
+            <h3 className="h3 mt">Flat chart</h3>
+          </>
         )}
         {snap && unit !== 'percent' && (
           <SignalPlot
