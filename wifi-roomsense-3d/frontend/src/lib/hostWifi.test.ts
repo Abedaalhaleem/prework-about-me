@@ -31,6 +31,12 @@ describe('host Wi-Fi signal', () => {
     expect(hostWifiStatus(s)).toContain('/proc/net/wireless');
   });
 
+  it('before the first start it says "press Start", not "not available"', () => {
+    const s = snap({ available: null, reason: null, running: false, method: null, latest: null });
+    expect(hostWifiStatus(s)).toContain('Press Start');
+    expect(hostWifiStatus(s)).not.toContain('Not available');
+  });
+
   it('never invents a value when not connected', () => {
     const s = snap({ latest: { t: 1, rssi_dbm: null, noise_dbm: null, signal_percent: null, tx_rate_mbps: null, channel: null, connected: false } });
     expect(hostWifiStatus(s)).toContain('No reading');

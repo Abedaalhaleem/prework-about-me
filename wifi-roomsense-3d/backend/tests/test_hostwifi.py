@@ -123,6 +123,12 @@ def test_monitor_samples_and_failed_reads_are_gaps_not_values() -> None:
     assert not mon.running
 
 
+def test_availability_is_unknown_before_the_first_start() -> None:
+    mon = HostWifiMonitor(reader_factory=lambda: (None, "no Wi-Fi interface"))
+    snap = mon.snapshot()
+    assert snap["available"] is None and snap["reason"] is None and not snap["running"]
+
+
 def test_unavailable_reader_reports_why_and_does_not_start() -> None:
     mon = HostWifiMonitor(reader_factory=lambda: (None, "no Wi-Fi interface"))
     snap = mon.start()

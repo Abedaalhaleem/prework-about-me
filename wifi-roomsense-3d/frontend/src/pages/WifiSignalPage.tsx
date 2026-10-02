@@ -79,7 +79,7 @@ export function WifiSignalPage() {
             height={260}
             legend
             emptyText={
-              !snap.available ? 'Not available on this computer (see above).' : snap.running ? 'Waiting for readings…' : 'Press Start to see the signal.'
+              snap.available === false ? 'Not available on this computer (see above).' : snap.running ? 'Waiting for readings…' : 'Press Start to see the signal.'
             }
           />
         )}

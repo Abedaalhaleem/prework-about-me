@@ -10,7 +10,8 @@ export interface HostWifiSnapshot {
   running: boolean;
   platform: string;
   method: string | null;
-  available: boolean;
+  /** null = not known yet (the reader has not been started). */
+  available: boolean | null;
   reason: string | null;
   interval_s: number | null;
   server_time_unix_ms: number;
@@ -42,7 +43,7 @@ export function signalUnit(snap: HostWifiSnapshot): 'dbm' | 'percent' | 'none' {
 
 /** Short status line; never claims more than the snapshot says. */
 export function hostWifiStatus(snap: HostWifiSnapshot): string {
-  if (!snap.available) return `Not available on this computer: ${snap.reason ?? 'unknown reason'}`;
+  if (snap.available === false) return `Not available on this computer: ${snap.reason ?? 'unknown reason'}`;
   if (!snap.running) return 'Stopped. Press Start to sample this computer\'s Wi-Fi signal.';
   const l = snap.latest;
   if (!l) return `Starting (${snap.method ?? 'reader'})…`;

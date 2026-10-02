@@ -313,6 +313,7 @@ class HostWifiMonitor:
         self._stop = threading.Event()
         self._errors = 0
         self._last_error: str | None = None
+        self._attempted = False  # availability is unknown until the first start()
 
     @property
     def running(self) -> bool:
@@ -322,6 +323,7 @@ class HostWifiMonitor:
     def start(self) -> dict[str, Any]:
         with self._lock:
             if not self.running:
+                self._attempted = True
                 reader, reason = self._factory()
                 self._reader, self._reason = reader, reason
                 if reader is not None:
@@ -369,8 +371,9 @@ class HostWifiMonitor:
                 "running": self.running,
                 "platform": f"{platform.system()} {platform.release()}".strip(),
                 "method": reader.name if reader is not None else None,
-                "available": reader is not None,
-                "reason": None if reader is not None else (self._reason or "not started"),
+                # None = not known yet (never started); never reported as "unavailable".
+                "available": (reader is not None) if self._attempted else None,
+                "reason": None if (reader is not None or not self._attempted) else (self._reason or "unknown"),
                 "interval_s": float(reader.interval_s) if reader is not None else None,
                 "server_time_unix_ms": now // 1_000_000,
                 "errors": self._errors,
