@@ -611,8 +611,8 @@ a {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap; /* every tab stays visible on narrow windows (no hidden scroll) */
   gap: 2px;
-  overflow-x: auto;
   padding: 0 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);

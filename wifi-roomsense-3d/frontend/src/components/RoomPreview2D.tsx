@@ -24,6 +24,23 @@ const C = {
   text: '#dfe5ee',
 };
 
+/** Greedy word wrap for canvas text (a word longer than the width gets its own line). */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 export function RoomPreview2D({ room, height = 320 }: { room: RoomGeometry; height?: number }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,9 +122,14 @@ export function RoomPreview2D({ room, height = 320 }: { room: RoomGeometry; heig
         ctx.setLineDash([]);
         const c = polygonCentroid(z.polygon);
         if (c) {
+          // Wrap the label to the zone's width and put it near the zone's top,
+          // so neighbouring zones and node labels at mid-height do not overlap.
+          const xs = z.polygon.map((p) => X(p.x));
+          const top = Math.min(...z.polygon.map((p) => Y(p.y)));
+          const lines = wrapText(ctx, z.label || z.id, Math.max(40, Math.max(...xs) - Math.min(...xs) - 8));
           ctx.fillStyle = C.text;
           ctx.textAlign = 'center';
-          ctx.fillText(z.label || z.id, X(c.x), Y(c.y));
+          lines.forEach((line, i) => ctx.fillText(line, X(c.x), top + 16 + i * 13));
           ctx.textAlign = 'start';
         }
       });
