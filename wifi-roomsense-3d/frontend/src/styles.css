@@ -1804,3 +1804,8 @@ legend {
   border-radius: 3px;
   background: linear-gradient(90deg, rgb(100, 230, 255), rgb(10, 40, 110));
 }
+@media (max-width: 900px) {
+  .wave-legend {
+    top: 64px; /* below the geometry label instead of on top of it */
+  }
+}

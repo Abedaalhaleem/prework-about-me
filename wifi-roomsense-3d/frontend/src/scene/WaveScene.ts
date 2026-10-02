@@ -76,7 +76,7 @@ export class WaveScene {
   private animate = true;
   private readonly t0 = performance.now();
   private roomKey: string | null = null;
-  private readonly home = { target: new THREE.Vector3(), camera: new THREE.Vector3(6, 8, 8) };
+  private readonly home = { target: new THREE.Vector3(), span: 8 };
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
@@ -107,8 +107,11 @@ export class WaveScene {
   }
 
   resetView(): void {
-    this.controls.target.copy(this.home.target);
-    this.camera.position.copy(this.home.camera);
+    // Fit the layout plus source: back off further in narrow (portrait-ish) windows.
+    const fit = this.home.span * Math.max(1, 1.5 / Math.max(0.3, this.camera.aspect));
+    const t = this.home.target;
+    this.controls.target.copy(t);
+    this.camera.position.set(t.x - fit * 0.55, fit * 0.85, t.z + fit * 0.9);
     this.controls.update();
   }
 
@@ -123,10 +126,18 @@ export class WaveScene {
     this.tx = tx;
     this.params = params;
 
+    // The coverage grid spans the layout AND the source (plus a margin), so the
+    // floor grid and the camera framing use it too: a far-away router stays in view.
+    const g = predictGrid(room, tx, params);
+    const gw = g.nx * g.cell;
+    const gh = g.ny * g.cell;
+    const centre = { x: g.x0 + gw / 2, y: g.y0 + gh / 2 };
+    const span = Math.max(gw, gh);
+
     // Floor grid around the layout.
-    const span = Math.max(room.width_m, room.depth_m) + 4;
-    const grid = new THREE.GridHelper(span, Math.round(span), 0x1d3557, 0x12203a);
-    grid.position.set(room.width_m / 2, 0, -room.depth_m / 2);
+    const grid = new THREE.GridHelper(span, Math.max(1, Math.round(span)), 0x1d3557, 0x12203a);
+    const [gx, , gz] = toThree(centre);
+    grid.position.set(gx, 0, gz);
     this.staticGroup.add(grid);
 
     // Glowing wireframe walls (the user's layout, not reconstructed).
@@ -171,7 +182,6 @@ export class WaveScene {
     }
 
     // Simulated coverage glow on the floor.
-    const g = predictGrid(room, tx, params);
     this.range = gridRange(g);
     const { lo, hi } = this.range;
     const canvas = document.createElement('canvas');
@@ -250,11 +260,12 @@ export class WaveScene {
       }
     }
 
-    const [cx, , cz] = toThree({ x: room.width_m / 2, y: room.depth_m / 2 });
+    const [cx, , cz] = toThree(centre);
     this.home.target.set(cx, 0.8, cz);
-    this.home.camera.set(cx - span * 0.55, span * 0.75, cz + span * 0.8);
-    // Keep the user's camera while they tweak settings; reframe only for a different room.
-    const roomKey = `${room.geometry_id}:${room.width_m}:${room.depth_m}`;
+    this.home.span = span;
+    // Keep the user's camera while they tweak power or band; reframe only when the
+    // room or the source position changes.
+    const roomKey = `${room.geometry_id}:${room.width_m}:${room.depth_m}:${tx.x}:${tx.y}`;
     if (roomKey !== this.roomKey) {
       this.roomKey = roomKey;
       this.resetView();
