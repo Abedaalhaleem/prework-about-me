@@ -47,7 +47,8 @@ from .. import __version__
 from ..config import REPO_ROOT, ApiTokenInvalid, AppConfig, api_token, load_config
 from ..logging_setup import register_secret
 from ..runtime import AppRuntime, OperationRefused
-from . import routes_calibration, routes_recordings, routes_source, routes_status, routes_validation, ws
+from . import (routes_calibration, routes_hostwifi, routes_recordings, routes_source, routes_status,
+               routes_validation, ws)
 from .security import SecurityMiddleware, StartupRefused, check_bind_allowed
 
 __all__ = ["create_app", "FRONTEND_DIST", "CSP", "error_body", "validation_error_body"]
@@ -273,6 +274,9 @@ def create_app(
         try:
             yield
         finally:
+            mon = getattr(app.state, "host_wifi", None)
+            if mon is not None:
+                await anyio.to_thread.run_sync(mon.stop)
             await anyio.to_thread.run_sync(rt.shutdown)
 
     app = FastAPI(
@@ -286,6 +290,7 @@ def create_app(
     app.state.runtime = runtime
     app.state.bind_host = cfg.server.host
     app.state.ws_clients = 0
+    app.state.host_wifi = None  # created on first use of /api/host-wifi
 
     # Every error answers {"detail": "CODE: text", "code": "CODE"}; request
     # validation errors add "errors" (type/loc/msg, never the input values).
@@ -312,7 +317,8 @@ def create_app(
         return JSONResponse(status_code=500,
                             content={"detail": f"INTERNAL_ERROR: {type(exc).__name__}", "code": "INTERNAL_ERROR"})
 
-    for r in (routes_status, routes_source, routes_calibration, routes_recordings, routes_validation, ws):
+    for r in (routes_status, routes_source, routes_calibration, routes_recordings, routes_validation,
+              routes_hostwifi, ws):
         app.include_router(r.router)
 
     dist = frontend_dist if frontend_dist is not None else FRONTEND_DIST

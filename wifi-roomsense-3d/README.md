@@ -69,6 +69,26 @@ scripts/stop.sh     # graceful shutdown (closes serial ports, finalises recordin
   `logs\roomsense.out.log`. `scripts/dev.sh` logs to the terminal.
 * **Problems:** see [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
+### My Wi-Fi signal (this computer, no extra hardware)
+
+The **My Wi-Fi signal** page plots the signal strength (RSSI, in dBm) and
+noise of the computer's own Wi-Fi connection, about twice a second. On macOS
+it uses Apple's CoreWLAN framework and falls back to `system_profiler` if
+CoreWLAN gives no reading. Linux uses `/proc/net/wireless`, and Windows uses
+`netsh`, which reports a percentage instead.
+
+This is **one coarse number, not CSI**:
+
+* It is not motion or through-wall sensing.
+* It never feeds the motion detector, recordings, validation or the 3-D room.
+* It changes mostly when the laptop or people right next to it move, or when the router adapts.
+
+The page is read-only. It does no scanning, never reads the network name into
+its samples, and keeps samples in memory only.
+
+The macOS reader has **not yet been run on a real Mac**. It was tested only
+with captured-format text and a test reader.
+
 ### Without hardware
 
 * **Simulation**: Dashboard → Source → Simulation. You must tick *"I understand

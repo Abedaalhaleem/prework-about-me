@@ -30,6 +30,7 @@ import type {
   WalkTestReport,
   ZoneStatusResponse,
 } from './types';
+import type { HostWifiSnapshot } from '../lib/hostWifi';
 import { type ConfiguredReceiversResult, parseConfiguredReceivers } from '../lib/sourceControls';
 
 const TOKEN_KEY = 'roomsense.apiToken';
@@ -274,6 +275,12 @@ export const api = {
   zoneStatus: (signal?: AbortSignal) => apiJson<ZoneStatusResponse>('/api/zone/status', 'GET', undefined, signal),
   poseStatus: (signal?: AbortSignal) => apiJson<PoseStatus>('/api/pose/status', 'GET', undefined, signal),
   hardware: (signal?: AbortSignal) => apiJson<JsonValue>('/api/hardware', 'GET', undefined, signal),
+
+  // "My Wi-Fi signal": RSSI of this computer's own Wi-Fi (not CSI; separate from sensing).
+  hostWifi: (seconds = 120, signal?: AbortSignal) =>
+    apiJson<HostWifiSnapshot>(`/api/host-wifi?seconds=${enc(String(seconds))}`, 'GET', undefined, signal),
+  hostWifiStart: () => apiJson<HostWifiSnapshot>('/api/host-wifi/start', 'POST', {}),
+  hostWifiStop: () => apiJson<HostWifiSnapshot>('/api/host-wifi/stop', 'POST', {}),
 };
 
 export function errorMessage(err: unknown): string {

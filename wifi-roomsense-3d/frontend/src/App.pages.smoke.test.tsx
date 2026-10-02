@@ -137,6 +137,7 @@ describe('Dashboard with data (jsdom)', () => {
       'Validation',
       'Capabilities & Research',
       'Hardware',
+      'My Wi-Fi signal',
       'Settings',
     ]);
     for (const tab of tabs) {
@@ -158,6 +159,10 @@ describe('Dashboard with data (jsdom)', () => {
     await act(async () => tabs[5]?.click());
     expect(text()).toContain('HARDWARE REQUIRED');
     expect(text()).toContain('Hardware inspection failed');
+    await act(async () => tabs[6]?.click());
+    // The signal-strength page states what it is not, and shows the request failure instead of numbers.
+    expect(text()).toContain('not the detailed CSI data');
+    expect(text()).toContain('never drawn in the 3-D room');
     await act(async () => tabs[1]?.click());
     expect(text()).toContain('EXAMPLE GEOMETRY (sample data — not your room)');
   });

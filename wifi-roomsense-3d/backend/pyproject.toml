@@ -15,6 +15,9 @@ dependencies = [
     "scikit-learn>=1.5,<2.0",
     "pyserial>=3.5,<4.0",
     "joblib>=1.4,<2.0",
+    # macOS only: read this Mac's own Wi-Fi signal strength (RSSI) for the
+    # "My Wi-Fi signal" page. Never used for CSI or motion detection.
+    "pyobjc-framework-CoreWLAN>=11.0,<13.0; sys_platform == 'darwin'",
 ]
 
 [dependency-groups]
