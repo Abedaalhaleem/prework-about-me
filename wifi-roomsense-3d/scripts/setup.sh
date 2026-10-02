@@ -70,7 +70,15 @@ info "installing backend dependencies (uv sync --frozen)"
 # --- frontend --------------------------------------------------------------------
 if [ "$SKIP_FRONTEND" -eq 0 ]; then
   info "building the web UI (npm ci && npm run build)"
-  (cd "$REPO/frontend" && npm ci && npm run build)
+  # A project-local npm cache: a shared ~/.npm that contains root-owned files
+  # (left by an earlier 'sudo npm ...') makes 'npm ci' fail with EACCES, and
+  # fixing that would need sudo. A cache inside the project never does.
+  NPM_CACHE="$REPO/.cache/npm"
+  mkdir -p "$NPM_CACHE"
+  if ! (cd "$REPO/frontend" && npm ci --cache "$NPM_CACHE" --no-audit --no-fund); then
+    die "npm ci failed (see the npm error above). Check your network and run scripts/setup.sh again."
+  fi
+  (cd "$REPO/frontend" && npm run build) || die "building the web UI failed (see the error above)."
 else
   info "skipping the web UI build (--skip-frontend)"
 fi

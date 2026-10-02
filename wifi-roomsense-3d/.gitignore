@@ -6,6 +6,8 @@ __pycache__/
 
 # Node / frontend
 frontend/node_modules/
+# project-local npm download cache used by scripts/setup.*
+.cache/
 frontend/dist/
 frontend/*.tsbuildinfo
 frontend/tsconfig*.tsbuildinfo

@@ -64,7 +64,11 @@ if (-not $SkipFrontend) {
     Info "building the web UI (npm ci; npm run build)"
     Push-Location (Join-Path $Repo 'frontend')
     try {
-        npm ci; if ($LASTEXITCODE -ne 0) { Fail "npm ci failed" }
+        # Project-local npm cache: a shared npm cache with files owned by another
+        # user makes 'npm ci' fail with EACCES; a cache inside the project never does.
+        $NpmCache = Join-Path $Repo '.cache\npm'
+        New-Item -ItemType Directory -Force -Path $NpmCache | Out-Null
+        npm ci --cache $NpmCache --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { Fail "npm ci failed (see the npm error above)" }
         npm run build; if ($LASTEXITCODE -ne 0) { Fail "npm run build failed" }
     } finally { Pop-Location }
 } else {
